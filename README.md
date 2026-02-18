@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TimeOS - Workspace Operations Platform
 
-## Getting Started
+Plataforma unificada de gestión del trabajo con Next.js y Luma.
 
-First, run the development server:
+## Requisitos
+
+- Node.js 18+
+- Luma API ejecutándose en `http://0.0.0.0:1234`
+
+## Instalación
+
+```bash
+npm install
+```
+
+## Configuración
+
+1. Copia el archivo de ejemplo de variables de entorno:
+```bash
+cp .env.example .env.local
+```
+
+2. Configura las variables según tu entorno:
+```
+LUMA_API_URL=http://0.0.0.0:1234
+LUMA_API_KEY=dev
+```
+
+## Desarrollo
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Características
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Dashboard**: Visión ejecutiva con KPIs y actividad reciente
+- **Timesheet**: Registro de horas tipo hoja de cálculo
+- **Aprobaciones**: Flujo de aprobación de timesheets
+- **Planificación**: Gantt interactivo con dependencias
+- **Recursos**: Heatmap de capacidad de recursos
+- **Reportes**: Pivot builder con drag & drop
+- **Documentos**: Gestión de documentos
+- **Procesos**: Monitor de jobs en tiempo real
+- **Configuración**: Ajustes del sistema
 
-## Learn More
+## API Endpoints
 
-To learn more about Next.js, take a look at the following resources:
+- `GET/POST /api/users` - Gestión de usuarios
+- `GET/POST /api/projects` - Gestión de proyectos
+- `GET/POST/PUT/DELETE /api/timesheets` - Gestión de entradas de tiempo
+- `GET/POST/PUT /api/approvals` - Gestión de aprobaciones
+- `GET/POST /api/init` - Inicialización de base de datos
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Arquitectura
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/
+├── app/
+│   ├── (main)/          # Páginas con layout principal
+│   │   ├── page.tsx     # Dashboard
+│   │   ├── timesheet/   # Timesheet
+│   │   ├── approvals/   # Aprobaciones
+│   │   └── ...
+│   ├── api/             # API Routes
+│   └── layout.tsx       # Root layout
+├── components/
+│   ├── ui/              # Componentes de UI
+│   └── layout/          # Layout components
+├── lib/
+│   ├── luma.ts          # Cliente de Luma API
+│   └── db.ts            # Inicialización de BD
+└── types/               # Tipos TypeScript
+```
 
-## Deploy on Vercel
+## Tecnologías
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS
+- Lucide Icons
+- Luma (Vector DB + SQL + State)
