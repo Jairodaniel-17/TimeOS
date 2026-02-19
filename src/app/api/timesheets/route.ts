@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { luma } from '@/lib/luma';
+import { getTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntry, getProjects, type TimeEntryDoc } from '@/lib/luma-docs';
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,84 +7,35 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const weekNumber = searchParams.get('weekNumber');
     const year = searchParams.get('year');
+    const limit = parseInt(searchParams.get('limit') || '100');
 
-    let sql = `
-      SELECT 
-        te.id, te.user_id, te.project_id, te.activity, te.notes, te.billable,
-        te.week_number, te.year, te.mon, te.tue, te.wed, te.thu, te.fri, te.sat, te.sun,
-        te.total, te.status,
-        p.name as project_name, p.code as project_code, p.client as project_client
-      FROM time_entries te
-      LEFT JOIN projects p ON te.project_id = p.id
-      WHERE 1=1
-    `;
-    const params: (string | number)[] = [];
+    const filter: { userId?: string; weekNumber?: number; year?: number } = {};
+    if (userId) filter.userId = userId;
+    if (weekNumber) filter.weekNumber = parseInt(weekNumber);
+    if (year) filter.year = parseInt(year);
 
-    if (userId) {
-      sql += ' AND te.user_id = ?';
-      params.push(userId);
-    }
-    if (weekNumber) {
-      sql += ' AND te.week_number = ?';
-      params.push(parseInt(weekNumber));
-    }
-    if (year) {
-      sql += ' AND te.year = ?';
-      params.push(parseInt(year));
-    }
+    const [entries, projects] = await Promise.all([
+      getTimeEntries(Object.keys(filter).length > 0 ? filter : undefined),
+      getProjects(),
+    ]);
 
-    sql += ' ORDER BY te.created_at DESC';
-
-    const entries = await luma.query<{
-      id: string;
-      user_id: string;
-      project_id: string;
-      activity: string;
-      notes: string | null;
-      billable: number;
-      week_number: number;
-      year: number;
-      mon: number;
-      tue: number;
-      wed: number;
-      thu: number;
-      fri: number;
-      sat: number;
-      sun: number;
-      total: number;
-      status: string;
-      project_name: string;
-      project_code: string;
-      project_client: string | null;
-    }>(sql, params);
+    const projectMap = new Map(projects.map(p => [p.id, p]));
+    const limitedEntries = entries.slice(0, limit);
 
     return NextResponse.json({
-      data: entries.map(e => ({
+      data: limitedEntries.map(e => ({
         id: e.id,
-        userId: e.user_id,
-        projectId: e.project_id,
+        userId: e.userId,
+        projectId: e.projectId,
         activity: e.activity,
         notes: e.notes,
-        billable: e.billable === 1,
-        weekNumber: e.week_number,
+        billable: e.billable,
+        weekNumber: e.weekNumber,
         year: e.year,
-        hours: {
-          mon: e.mon,
-          tue: e.tue,
-          wed: e.wed,
-          thu: e.thu,
-          fri: e.fri,
-          sat: e.sat,
-          sun: e.sun,
-        },
+        hours: e.hours,
         total: e.total,
         status: e.status,
-        project: {
-          id: e.project_id,
-          name: e.project_name,
-          code: e.project_code,
-          client: e.project_client,
-        },
+        project: projectMap.get(e.projectId) || null,
       })),
       success: true,
     });
@@ -112,22 +63,24 @@ export async function POST(request: Request) {
     } = body;
 
     const id = `te_${Date.now()}`;
-    const total = Object.values(hours).reduce((a: number, b) => a + (b as number), 0);
+    const total = Object.values(hours as Record<string, number>).reduce((a, b) => a + b, 0);
 
-    await luma.exec(
-      `INSERT INTO time_entries 
-        (id, user_id, project_id, activity, notes, billable, week_number, year, mon, tue, wed, thu, fri, sat, sun, total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
-      [
-        id, userId, projectId, activity, notes || null, billable ? 1 : 0,
-        weekNumber, year,
-        hours.mon, hours.tue, hours.wed, hours.thu, hours.fri, hours.sat, hours.sun,
-        total
-      ]
-    );
+    const entry = await createTimeEntry({
+      id,
+      userId,
+      projectId,
+      activity,
+      notes,
+      billable,
+      weekNumber,
+      year,
+      hours,
+      total,
+      status: 'draft',
+    });
 
     return NextResponse.json({
-      data: { id, userId, projectId, activity, notes, billable, weekNumber, year, hours, total, status: 'draft' },
+      data: entry,
       success: true,
     });
   } catch (error) {
@@ -144,21 +97,21 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { id, activity, notes, hours, status } = body;
     
-    const total = hours ? Object.values(hours).reduce((a: number, b) => a + (b as number), 0) : 0;
-
+    const updates: Partial<TimeEntryDoc> = {};
+    if (activity !== undefined) updates.activity = activity;
+    if (notes !== undefined) updates.notes = notes;
+    if (status !== undefined) updates.status = status;
     if (hours) {
-      await luma.exec(
-        `UPDATE time_entries 
-         SET activity = ?, notes = ?, mon = ?, tue = ?, wed = ?, thu = ?, fri = ?, sat = ?, sun = ?, total = ?, status = ?, updated_at = strftime('%s', 'now') * 1000
-         WHERE id = ?`,
-        [activity, notes || null, hours.mon, hours.tue, hours.wed, hours.thu, hours.fri, hours.sat, hours.sun, total, status, id]
-      );
-    } else {
-      await luma.exec(
-        `UPDATE time_entries 
-         SET activity = ?, notes = ?, status = ?, updated_at = strftime('%s', 'now') * 1000
-         WHERE id = ?`,
-        [activity, notes || null, status, id]
+      updates.hours = hours;
+      updates.total = Object.values(hours as Record<string, number>).reduce((a, b) => a + b, 0);
+    }
+
+    const entry = await updateTimeEntry(id, updates);
+
+    if (!entry) {
+      return NextResponse.json(
+        { error: 'Entry not found', success: false },
+        { status: 404 }
       );
     }
 
@@ -184,7 +137,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await luma.exec('DELETE FROM time_entries WHERE id = ?', [id]);
+    await deleteTimeEntry(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

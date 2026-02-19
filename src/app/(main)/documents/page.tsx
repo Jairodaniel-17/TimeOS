@@ -2,7 +2,7 @@
 
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button } from '@/components/ui';
-import { Upload, Download, Trash2, FileText, Folder } from 'lucide-react';
+import { Upload, Download, Trash2, Folder } from 'lucide-react';
 
 const folders = [
   { id: 'all', name: 'Todos los documentos', icon: Folder },

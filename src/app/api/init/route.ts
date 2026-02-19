@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server';
-import { initializeDatabase, checkDatabaseHealth } from '@/lib/db';
+import { initializeDocumentStore, clearAllData } from '@/lib/luma-docs';
+import { seedDocumentStore } from '@/lib/seed-docs';
 
 export async function GET() {
   try {
-    const isHealthy = await checkDatabaseHealth();
-    
-    if (!isHealthy) {
-      await initializeDatabase();
-    }
+    const isHealthy = await initializeDocumentStore();
     
     return NextResponse.json({ 
       status: 'ok',
-      database: isHealthy ? 'connected' : 'initialized',
+      database: isHealthy ? 'connected' : 'error',
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -25,15 +22,38 @@ export async function GET() {
 
 export async function POST() {
   try {
-    await initializeDatabase();
+    // Initialize Document Store
+    await initializeDocumentStore();
+    
+    // Seed with initial data
+    await seedDocumentStore();
+    
     return NextResponse.json({ 
       status: 'ok', 
-      message: 'Database initialized successfully' 
+      message: 'Document Store initialized and seeded successfully' 
     });
   } catch (error) {
     console.error('Database initialization failed:', error);
     return NextResponse.json(
       { status: 'error', message: 'Database initialization failed' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE() {
+  try {
+    // Clear all data (useful for reset)
+    await clearAllData();
+    
+    return NextResponse.json({ 
+      status: 'ok', 
+      message: 'All data cleared' 
+    });
+  } catch (error) {
+    console.error('Failed to clear data:', error);
+    return NextResponse.json(
+      { status: 'error', message: 'Failed to clear data' },
       { status: 500 }
     );
   }

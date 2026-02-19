@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
-import { Button, Tabs, Card, Badge } from '@/components/ui';
+import { Button, Tabs, Card } from '@/components/ui';
 import { CheckCircle, XCircle, MessageCircle } from 'lucide-react';
+import { PermissionGate } from '@/hooks/usePermissions';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface Approval {
   id: string;
@@ -27,17 +30,18 @@ export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [selectedItem, setSelectedItem] = useState<Approval | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { isAdmin, isManager } = usePermissions();
 
   useEffect(() => {
     async function fetchApprovals() {
       try {
-        const res = await fetch(`/api/approvals?status=${activeTab}`);
+        // Members can only see their own approvals, admins/managers see all
+        const userIdParam = (!isAdmin && !isManager && user) ? `&userId=${user.id}` : '';
+        const res = await fetch(`/api/approvals?status=${activeTab}${userIdParam}`);
         const data = await res.json();
         if (data.success) {
           setApprovals(data.data);
-          if (data.data.length > 0 && !selectedItem) {
-            setSelectedItem(data.data[0]);
-          }
         }
       } catch (error) {
         console.error('Error fetching approvals:', error);
@@ -47,7 +51,14 @@ export default function ApprovalsPage() {
     }
 
     fetchApprovals();
-  }, [activeTab]);
+  }, [activeTab, user, isAdmin, isManager]);
+
+  // Seleccionar primer item cuando cambian las aprobaciones y no hay selección
+  useEffect(() => {
+    if (approvals.length > 0 && !selectedItem) {
+      setSelectedItem(approvals[0]);
+    }
+  }, [approvals, selectedItem]);
 
   const handleApprove = async (id: string) => {
     await fetch('/api/approvals', {
@@ -227,6 +238,7 @@ export default function ApprovalsPage() {
                   </Card>
                 </div>
 
+                <PermissionGate permission="approvals:manage">
                 <div className="flex items-center justify-end gap-2 border-t border-[var(--color-border-subtle)] px-6 py-4">
                   <Button variant="secondary" icon={<MessageCircle className="h-4 w-4" />}>
                     Solicitar cambios
@@ -238,6 +250,7 @@ export default function ApprovalsPage() {
                     Aprobar
                   </Button>
                 </div>
+              </PermissionGate>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full">

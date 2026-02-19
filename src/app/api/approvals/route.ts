@@ -1,61 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { luma } from '@/lib/luma';
+import { getApprovals, createApproval, updateApproval, getUsers, getTimeEntries, updateTimeEntry } from '@/lib/luma-docs';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
+    const userId = searchParams.get('userId');
+    const limit = parseInt(searchParams.get('limit') || '100');
 
-    let sql = `
-      SELECT 
-        ar.id, ar.user_id, ar.approver_id, ar.week_number, ar.year, 
-        ar.total_hours, ar.status, ar.comments, ar.submitted_at, ar.reviewed_at,
-        u.name as user_name, u.email as user_email
-      FROM approval_requests ar
-      LEFT JOIN users u ON ar.user_id = u.id
-      WHERE 1=1
-    `;
-    const params: (string | number)[] = [];
+    const filter: { status?: string; userId?: string } = {};
+    if (status) filter.status = status;
+    if (userId) filter.userId = userId;
 
-    if (status) {
-      sql += ' AND ar.status = ?';
-      params.push(status);
-    }
+    const [approvals, users] = await Promise.all([
+      getApprovals(Object.keys(filter).length > 0 ? filter : undefined),
+      getUsers(),
+    ]);
 
-    sql += ' ORDER BY ar.created_at DESC';
+    const limitedApprovals = approvals.slice(0, limit);
 
-    const approvals = await luma.query<{
-      id: string;
-      user_id: string;
-      approver_id: string | null;
-      week_number: number;
-      year: number;
-      total_hours: number;
-      status: string;
-      comments: string | null;
-      submitted_at: number | null;
-      reviewed_at: number | null;
-      user_name: string;
-      user_email: string;
-    }>(sql, params);
+    const userMap = new Map(users.map(u => [u.id, u]));
 
     return NextResponse.json({
-      data: approvals.map(a => ({
+      data: limitedApprovals.map(a => ({
         id: a.id,
-        userId: a.user_id,
-        approverId: a.approver_id,
-        weekNumber: a.week_number,
+        userId: a.userId,
+        approverId: a.approverId,
+        weekNumber: a.weekNumber,
         year: a.year,
-        totalHours: a.total_hours,
+        totalHours: a.totalHours,
         status: a.status,
         comments: a.comments,
-        submittedAt: a.submitted_at,
-        reviewedAt: a.reviewed_at,
-        user: {
-          id: a.user_id,
-          name: a.user_name,
-          email: a.user_email,
-        },
+        submittedAt: a.submittedAt,
+        reviewedAt: a.reviewedAt,
+        user: userMap.get(a.userId) || null,
       })),
       success: true,
     });
@@ -76,23 +54,24 @@ export async function POST(request: Request) {
     const id = `apr_${Date.now()}`;
     const now = Date.now();
 
-    await luma.exec(
-      `INSERT INTO approval_requests 
-        (id, user_id, week_number, year, total_hours, status, submitted_at)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
-      [id, userId, weekNumber, year, totalHours, now]
-    );
+    const approval = await createApproval({
+      id,
+      userId,
+      weekNumber,
+      year,
+      totalHours,
+      status: 'pending',
+      submittedAt: now,
+    });
 
     // Update related time entries to 'pending' status
-    await luma.exec(
-      `UPDATE time_entries 
-       SET status = 'pending', updated_at = strftime('%s', 'now') * 1000
-       WHERE user_id = ? AND week_number = ? AND year = ?`,
-      [userId, weekNumber, year]
-    );
+    const entries = await getTimeEntries({ userId, weekNumber, year });
+    for (const entry of entries) {
+      await updateTimeEntry(entry.id, { status: 'pending' });
+    }
 
     return NextResponse.json({
-      data: { id, userId, weekNumber, year, totalHours, status: 'pending', submittedAt: now },
+      data: approval,
       success: true,
     });
   } catch (error) {
@@ -110,28 +89,32 @@ export async function PUT(request: Request) {
     const { id, status, approverId, comments } = body;
     const now = Date.now();
 
-    await luma.exec(
-      `UPDATE approval_requests 
-       SET status = ?, approver_id = ?, comments = ?, reviewed_at = ?
-       WHERE id = ?`,
-      [status, approverId, comments || null, now, id]
-    );
+    const updates: { status?: 'pending' | 'approved' | 'rejected'; approverId?: string; comments?: string; reviewedAt?: number } = {
+      status: status as 'pending' | 'approved' | 'rejected',
+      reviewedAt: now,
+    };
+    if (approverId) updates.approverId = approverId;
+    if (comments) updates.comments = comments;
+
+    const approval = await updateApproval(id, updates);
+
+    if (!approval) {
+      return NextResponse.json(
+        { error: 'Approval not found', success: false },
+        { status: 404 }
+      );
+    }
 
     // If approved or rejected, update the time entries
     if (status === 'approved' || status === 'rejected') {
-      const approval = await luma.query<{ user_id: string; week_number: number; year: number }>(
-        'SELECT user_id, week_number, year FROM approval_requests WHERE id = ?',
-        [id]
-      );
+      const entries = await getTimeEntries({
+        userId: approval.userId,
+        weekNumber: approval.weekNumber,
+        year: approval.year,
+      });
       
-      if (approval.length > 0) {
-        const a = approval[0];
-        await luma.exec(
-          `UPDATE time_entries 
-           SET status = ?, updated_at = strftime('%s', 'now') * 1000
-           WHERE user_id = ? AND week_number = ? AND year = ?`,
-          [status, a.user_id, a.week_number, a.year]
-        );
+      for (const entry of entries) {
+        await updateTimeEntry(entry.id, { status });
       }
     }
 

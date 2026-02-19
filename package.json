@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "gantt-task-react": "^0.3.9",
+    "hyperformula": "^3.2.0",
     "lucide-react": "^0.574.0",
+    "luckysheet": "^2.1.13",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"

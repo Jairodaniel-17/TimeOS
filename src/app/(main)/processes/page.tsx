@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button, Tabs, Card, Badge } from '@/components/ui';
-import { Pause, RefreshCw, XCircle, Clock, CheckCircle, Copy } from 'lucide-react';
+import { Pause, RefreshCw, XCircle, Clock, CheckCircle } from 'lucide-react';
 
 const jobs = [
   { id: '1', type: 'export', initiatedBy: 'Ana García', progress: 78, status: 'running', startedAt: Date.now() - 120000 },

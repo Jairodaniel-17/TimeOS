@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { RouteGuard } from '@/components/RouteGuard';
 
 export const metadata: Metadata = {
   title: 'TimeOS - Workspace Operations Platform',
@@ -14,7 +16,11 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="antialiased">
-        {children}
+        <AuthProvider>
+          <RouteGuard>
+            {children}
+          </RouteGuard>
+        </AuthProvider>
       </body>
     </html>
   );

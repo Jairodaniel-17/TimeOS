@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button, KPICard, Card, Badge } from '@/components/ui';
 import { Clock, CheckCircle, Users, Calendar, RefreshCw, Plus, Download, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { getWeekNumber, getCurrentYear } from '@/lib/utils';
 
 interface TimeEntry {
   id: string;
@@ -32,15 +33,23 @@ interface KPIData {
   pendingApprovals: number;
   usersWithoutEntries: number;
   currentWeek: number;
+  projectHours: Record<string, number>;
+}
+
+interface DashboardData {
+  entries: TimeEntry[];
+  approvals: Approval[];
 }
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
   const [kpiData, setKpiData] = useState<KPIData>({
     totalHours: 0,
     pendingApprovals: 0,
     usersWithoutEntries: 0,
-    currentWeek: 8,
+    currentWeek: getWeekNumber(),
+    projectHours: {},
   });
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
@@ -48,13 +57,13 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        // Initialize database first
-        await fetch('/api/init', { method: 'POST' });
+        const currentWeek = getWeekNumber();
+        const currentYear = getCurrentYear();
 
-        // Fetch data in parallel
+        // Fetch all dashboard data in single optimized call
         const [entriesRes, approvalsRes] = await Promise.all([
-          fetch('/api/timesheets?weekNumber=8&year=2025'),
-          fetch('/api/approvals?status=pending'),
+          fetch(`/api/timesheets?weekNumber=${currentWeek}&year=${currentYear}&limit=5`),
+          fetch('/api/approvals?status=pending&limit=5'),
         ]);
 
         const entriesData = await entriesRes.json();
@@ -63,9 +72,16 @@ export default function Dashboard() {
         if (entriesData.success) {
           const entries = entriesData.data as TimeEntry[];
           setRecentEntries(entries.slice(0, 5));
-          
           const totalHours = entries.reduce((sum: number, e: TimeEntry) => sum + e.total, 0);
-          setKpiData(prev => ({ ...prev, totalHours }));
+          
+          // Calculate hours per project
+          const projectHours: Record<string, number> = {};
+          entries.forEach((e: TimeEntry) => {
+            const projectName = e.project?.name || 'Sin proyecto';
+            projectHours[projectName] = (projectHours[projectName] || 0) + e.total;
+          });
+          
+          setKpiData(prev => ({ ...prev, totalHours, projectHours }));
         }
 
         if (approvalsData.success) {
@@ -73,13 +89,6 @@ export default function Dashboard() {
           setPendingApprovals(approvals.slice(0, 5));
           setKpiData(prev => ({ ...prev, pendingApprovals: approvals.length }));
         }
-
-        // Calculate current week
-        const now = new Date();
-        const start = new Date(now.getFullYear(), 0, 1);
-        const weekNumber = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
-        setKpiData(prev => ({ ...prev, currentWeek: weekNumber }));
-
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -91,9 +100,13 @@ export default function Dashboard() {
   }, []);
 
   const handleRefresh = () => {
-    setLoading(true);
-    window.location.reload();
+    startTransition(() => {
+      setLoading(true);
+      window.location.reload();
+    });
   };
+
+  const isLoading = loading || isPending;
 
   return (
     <PageLayout>
@@ -115,8 +128,10 @@ export default function Dashboard() {
         }
       />
       <PageContent>
-        {loading ? (
-          <div className="text-center py-12 text-[var(--color-text-secondary)]">Cargando...</div>
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
+          </div>
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-4 gap-4">
@@ -257,49 +272,43 @@ export default function Dashboard() {
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">
                   Distribución por proyecto
                 </h3>
-                <div className="flex items-center gap-6">
-                  <div className="relative w-32 h-32">
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                      <circle
-                        cx="50" cy="50" r="40"
-                        fill="none"
-                        stroke="var(--color-border-subtle)"
-                        strokeWidth="12"
-                      />
-                      <circle
-                        cx="50" cy="50" r="40"
-                        fill="none"
-                        stroke="var(--color-primary)"
-                        strokeWidth="12"
-                        strokeDasharray={`${45 * 2.51} ${100 - 45 * 2.51}`}
-                      />
-                      <circle
-                        cx="50" cy="50" r="40"
-                        fill="none"
-                        stroke="var(--color-success)"
-                        strokeWidth="12"
-                        strokeDasharray={`${30 * 2.51} ${100 - 30 * 2.51}`}
-                        strokeDashoffset={-45 * 2.51}
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-lg font-semibold">{kpiData.totalHours}h</span>
+                {Object.keys(kpiData.projectHours).length > 0 ? (
+                  <div className="flex items-center gap-6">
+                    <div className="relative w-32 h-32">
+                      <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-border-subtle)" strokeWidth="12" />
+                        {Object.entries(kpiData.projectHours).slice(0, 3).map(([_, hours], idx) => {
+                          const colors = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)'];
+                          const prevHours = Object.entries(kpiData.projectHours).slice(0, idx).reduce((sum, [_, h]) => sum + h, 0);
+                          const percentage = (hours / kpiData.totalHours) * 100;
+                          const offset = -(prevHours / kpiData.totalHours) * 100 * 2.51;
+                          return (
+                            <circle key={idx} cx="50" cy="50" r="40" fill="none" stroke={colors[idx]} strokeWidth="12" strokeDasharray={`${percentage * 2.51} ${100 - percentage * 2.51}`} strokeDashoffset={offset} />
+                          );
+                        })}
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-lg font-semibold">{kpiData.totalHours}h</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      {Object.entries(kpiData.projectHours).map(([name, hours], idx) => {
+                        const colors = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)'];
+                        return (
+                          <div key={name} className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ background: colors[idx % 3] }} />
+                            <span className="text-sm text-[var(--color-text-secondary)] flex-1 truncate">{name}</span>
+                            <span className="text-sm font-medium">{hours}h</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                  <div className="flex-1 space-y-2">
-                    {[
-                      { name: 'Portal Clientes', hours: 70, color: 'var(--color-primary)' },
-                      { name: 'App Móvil', hours: 48, color: 'var(--color-success)' },
-                      { name: 'Otros', hours: 38, color: 'var(--color-warning)' },
-                    ].map((project) => (
-                      <div key={project.name} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ background: project.color }} />
-                        <span className="text-sm text-[var(--color-text-secondary)] flex-1">{project.name}</span>
-                        <span className="text-sm font-medium">{project.hours}h</span>
-                      </div>
-                    ))}
+                ) : (
+                  <div className="text-sm text-[var(--color-text-secondary)] text-center py-8">
+                    No hay datos de proyectos
                   </div>
-                </div>
+                )}
               </Card>
             </div>
           </div>

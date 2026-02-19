@@ -43,7 +43,7 @@ export function Header({ title, breadcrumbs, actions }: HeaderProps) {
 
 export function PageLayout({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={clsx('flex min-h-0 flex-1 flex-col ml-60', className)}>
+    <div className={clsx('flex flex-col h-screen', className)}>
       {children}
     </div>
   );
@@ -51,7 +51,7 @@ export function PageLayout({ children, className }: { children: ReactNode; class
 
 export function PageContent({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={clsx('flex-1 overflow-auto p-6', className)}>
+    <div className={clsx('flex-1 overflow-y-auto p-6', className)}>
       {children}
     </div>
   );

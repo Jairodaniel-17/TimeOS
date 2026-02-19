@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
-import { Button, Badge, Card } from '@/components/ui';
+import { Button, Badge } from '@/components/ui';
 import { Send, Save, Copy, Upload, History } from 'lucide-react';
 import type { Project, TimeEntry } from '@/types';
+import { getWeekNumber, getCurrentYear } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const daysKey = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
@@ -16,15 +18,19 @@ export default function TimesheetPage() {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [submitted, setSubmitted] = useState(false);
+  const { user } = useAuth();
 
-  const weekNumber = 8;
-  const year = 2025;
+  const weekNumber = getWeekNumber();
+  const year = getCurrentYear();
 
   useEffect(() => {
     async function fetchData() {
       try {
+        // Members can only see their own timesheets
+        const userIdParam = user ? `&userId=${user.id}` : '';
         const [entriesRes, projectsRes] = await Promise.all([
-          fetch(`/api/timesheets?weekNumber=${weekNumber}&year=${year}`),
+          fetch(`/api/timesheets?weekNumber=${weekNumber}&year=${year}${userIdParam}`),
           fetch('/api/projects'),
         ]);
 
@@ -115,20 +121,37 @@ export default function TimesheetPage() {
   };
 
   const handleSubmit = async () => {
+    if (!user) {
+      alert('Debes iniciar sesión para enviar el timesheet');
+      return;
+    }
+    
     const totalHours = entries.reduce((sum, e) => sum + e.total, 0);
     
-    await fetch('/api/approvals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: '1',
-        weekNumber,
-        year,
-        totalHours,
-      }),
-    });
+    try {
+      const res = await fetch('/api/approvals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          weekNumber,
+          year,
+          totalHours,
+        }),
+      });
 
-    alert('Timesheet enviado para aprobación');
+      if (res.ok) {
+        setSubmitted(true);
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+      } else {
+        alert('Error al enviar timesheet');
+      }
+    } catch (error) {
+      console.error('Error submitting:', error);
+      alert('Error al enviar timesheet');
+    }
   };
 
   const totalHours = entries.reduce((sum, e) => sum + e.total, 0);
@@ -224,7 +247,7 @@ export default function TimesheetPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((entry, rowIndex) => (
+                  {entries.map((entry) => (
                     <tr
                       key={entry.id}
                       className={`transition-colors duration-[var(--duration-instant)] ${

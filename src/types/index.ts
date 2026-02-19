@@ -4,6 +4,8 @@ export interface User {
   email: string;
   avatar?: string;
   role: 'admin' | 'manager' | 'member';
+  password?: string; // Hashed password
+  isActive: boolean;
   createdAt?: number;
   updatedAt?: number;
 }
@@ -15,6 +17,14 @@ export interface Project {
   client?: string;
   billable: boolean;
   status?: 'active' | 'archived';
+  budget?: number; // Presupuesto total del proyecto
+  budgetHours?: number; // Horas presupuestadas
+  actualCost?: number; // Costo real acumulado
+  actualHours?: number; // Horas reales acumuladas
+  hourlyRate?: number; // Tarifa de venta por hora (si es billable)
+  currency?: string; // Moneda del proyecto
+  profit?: number; // Ganancia calculada
+  profitMargin?: number; // Margen de ganancia %
   createdAt?: number;
   updatedAt?: number;
 }
@@ -74,6 +84,9 @@ export interface Resource {
   userId: string;
   capacity: number;
   skills?: string[];
+  hourlyRate: number; // Costo por hora (salario/hora)
+  monthlySalary?: number; // Salario mensual opcional
+  currency: string; // Moneda (USD, EUR, etc.)
   user?: User;
 }
 
@@ -91,12 +104,25 @@ export interface ResourceAllocation {
 export interface Task {
   id: string;
   projectId: string;
+  parentId?: string;
   name: string;
+  description?: string;
   assigneeId?: string;
   startDate: string;
   endDate: string;
+  estimatedHours: number;
+  actualHours: number;
+  remainingHours?: number;
+  overHours?: number;
+  variance?: number;
   progress: number;
+  priority: 'low' | 'medium' | 'high';
+  status: 'todo' | 'in_progress' | 'done';
   dependencies: string[];
+  hasSubtasks?: boolean;
+  subtaskCount?: number;
+  subtasks?: Task[];
+  timeStatus?: 'on_track' | 'over_budget' | 'under_budget' | 'not_started';
   project?: Project;
   assignee?: User;
 }
