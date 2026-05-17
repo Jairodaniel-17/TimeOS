@@ -1,0 +1,3536 @@
+components:
+  schemas:
+    AggregateRequest:
+      properties:
+        filter:
+          $ref: "#/components/schemas/MetadataFilter"
+          description: Optional typed metadata filter applied before grouping.
+          nullable: true
+        group_by:
+          description: Metadata field name to group by.
+          example: tax_system
+          type: string
+        limit:
+          default: 100
+          description: Max number of buckets returned.
+          maximum: 1000
+          nullable: true
+          type: integer
+      required:
+        - group_by
+      type: object
+    AggregateResponse:
+      properties:
+        buckets:
+          description: Buckets sorted by count descending.
+          items:
+            $ref: "#/components/schemas/AggregationBucket"
+          type: array
+      required:
+        - buckets
+      type: object
+    AggregationBucket:
+      properties:
+        count:
+          description: Number of vectors in this bucket (after applying filter).
+          type: integer
+        value:
+          description: Field value for this bucket.
+          type: string
+      required:
+        - value
+        - count
+      type: object
+    ApiKeyRecord:
+      properties:
+        created_at_ms:
+          format: uint64
+          type: integer
+        id:
+          description: Opaque key identifier (UUID).
+          type: string
+        name:
+          type: string
+        role:
+          enum:
+            - admin
+            - user
+          type: string
+      required:
+        - id
+        - name
+        - role
+        - created_at_ms
+      type: object
+    AuditEntry:
+      properties:
+        api_key_id:
+          nullable: true
+          type: string
+        ip:
+          nullable: true
+          type: string
+        latency_ms:
+          format: uint64
+          type: integer
+        method:
+          example: POST
+          type: string
+        path:
+          example: /v1/vector/my-col/search
+          type: string
+        status_code:
+          example: 200
+          type: integer
+        ts_ms:
+          format: uint64
+          type: integer
+      required:
+        - ts_ms
+        - method
+        - path
+        - status_code
+        - latency_ms
+      type: object
+    BackupResponse:
+      properties:
+        offset:
+          description: WAL offset at the time the snapshot was taken.
+          format: uint64
+          type: integer
+        ok:
+          type: boolean
+      required:
+        - ok
+        - offset
+      type: object
+    BeliefHistoryResponse:
+      properties:
+        fact_key:
+          type: string
+        versions:
+          description: Ordered from newest to oldest. The active version is first.
+          items:
+            $ref: "#/components/schemas/BeliefVersion"
+          type: array
+      required:
+        - fact_key
+        - versions
+      type: object
+    BeliefVersion:
+      properties:
+        confidence:
+          format: float
+          type: number
+        content:
+          type: string
+        created_at_ms:
+          format: uint64
+          type: integer
+        entity_id:
+          nullable: true
+          type: string
+        fact_key:
+          type: string
+        id:
+          type: string
+        namespace:
+          type: string
+        status:
+          type: string
+        superseded_by:
+          description: ID of the newer MemoryRecord that replaced this version.
+          nullable: true
+          type: string
+        valid_from:
+          format: uint64
+          type: integer
+        valid_until:
+          format: uint64
+          nullable: true
+          type: integer
+      required:
+        - id
+        - fact_key
+        - namespace
+        - content
+        - confidence
+        - status
+        - valid_from
+        - created_at_ms
+      type: object
+    CentralityResponse:
+      properties:
+        namespace:
+          type: string
+        updated:
+          description: Number of memory records whose centrality_score was recomputed.
+          type: integer
+      required:
+        - namespace
+        - updated
+      type: object
+    ConfigUpdateResponse:
+      properties:
+        message:
+          example: Configuration saved to luma.toml. A server restart is required for
+            changes to take effect.
+          type: string
+        status:
+          enum:
+            - success
+          type: string
+      required:
+        - status
+        - message
+      type: object
+    CreateApiKeyRequest:
+      properties:
+        name:
+          example: Production backend
+          type: string
+        role:
+          default: user
+          enum:
+            - admin
+            - user
+          type: string
+      required:
+        - name
+      type: object
+    CreateApiKeyResponse:
+      properties:
+        id:
+          type: string
+        key:
+          description: The raw API key value. Shown only once — store securely.
+          example: rk_live_abc123…
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+      required:
+        - id
+        - name
+        - role
+        - key
+      type: object
+    CreateStateIndexRequest:
+      properties:
+        field:
+          description: >
+            JSON field name inside the `value` object to index. Must be
+            non-empty and within `max_key_len`.
+          example: user_id
+          type: string
+      required:
+        - field
+      type: object
+    CreateStateIndexResponse:
+      properties:
+        field:
+          example: user_id
+          type: string
+        status:
+          enum:
+            - ok
+          type: string
+      required:
+        - status
+        - field
+      type: object
+    CreateVectorCollectionRequest:
+      properties:
+        dim:
+          description: Dimension of the vectors in this collection
+          example: 384
+          minimum: 1
+          type: integer
+        metric:
+          $ref: "#/components/schemas/VectorMetric"
+      required:
+        - dim
+        - metric
+      type: object
+    CreateVectorCollectionResponse:
+      properties:
+        collection:
+          type: string
+        dim:
+          type: integer
+        metric:
+          $ref: "#/components/schemas/VectorMetric"
+      required:
+        - collection
+        - dim
+        - metric
+      type: object
+    DeleteStateResponse:
+      properties:
+        deleted:
+          type: boolean
+      required:
+        - deleted
+      type: object
+    DiskAnnBuildParams:
+      properties:
+        build_threads:
+          default: 4
+          description: Number of threads used during index construction.
+          example: 4
+          type: integer
+        max_degree:
+          default: 64
+          description: Maximum out-degree per node in the Vamana graph. Clamped to [4,
+            1024].
+          example: 32
+          type: integer
+        search_list_size:
+          default: 128
+          description: >
+            Candidate list size during greedy graph traversal. Larger values
+            improve recall at the cost of build time. Clamped to [8, 65535].
+          example: 128
+          type: integer
+      required:
+        - max_degree
+        - build_threads
+        - search_list_size
+      type: object
+    DiskAnnBuildRequest:
+      description: >
+        All fields are optional. Omitted fields fall back to the server's
+        `diskann_*` configuration values.
+      properties:
+        build_threads:
+          example: 4
+          nullable: true
+          type: integer
+        max_degree:
+          example: 32
+          nullable: true
+          type: integer
+        search_list_size:
+          example: 128
+          nullable: true
+          type: integer
+      type: object
+    DiskAnnMutationResponse:
+      properties:
+        ok:
+          type: boolean
+        params:
+          $ref: "#/components/schemas/DiskAnnBuildParams"
+          description: Effective parameters used for this build/tune operation.
+        status:
+          $ref: "#/components/schemas/DiskAnnStatusResponse"
+      required:
+        - ok
+        - params
+        - status
+      type: object
+    DiskAnnStatusResponse:
+      properties:
+        available:
+          description: True when a built DiskANN graph is loaded and ready for queries.
+          type: boolean
+        graph_files:
+          description: Relative paths of the graph segment files on disk.
+          items:
+            type: string
+          type: array
+        last_built_ms:
+          description: Unix timestamp (ms) of the last successful build. 0 if never built.
+          format: uint64
+          type: integer
+        params:
+          $ref: "#/components/schemas/DiskAnnBuildParams"
+      required:
+        - available
+        - last_built_ms
+        - graph_files
+        - params
+      type: object
+    DocFindResponse:
+      properties:
+        documents:
+          items:
+            $ref: "#/components/schemas/DocRecord"
+          type: array
+      type: object
+    DocRecord:
+      properties:
+        doc:
+          type: object
+        id:
+          type: string
+        revision:
+          format: uint64
+          type: integer
+      required:
+        - id
+        - doc
+        - revision
+      type: object
+    EdgeType:
+      description: Semantic relationship type between two memory records.
+      enum:
+        - supports
+        - contradicts
+        - supersedes
+        - triggered_by
+        - related_to
+      type: string
+    ErrorBody:
+      properties:
+        error:
+          example: invalid_argument
+          type: string
+        message:
+          example: The provided vector dimension does not match the collection.
+          type: string
+      required:
+        - error
+        - message
+      type: object
+    HighLevelDocumentMetadata:
+      properties:
+        category:
+          type: string
+        document_id:
+          type: string
+        filename:
+          type: string
+        group_id:
+          type: integer
+        language:
+          type: string
+        processed_at:
+          format: uint64
+          type: integer
+        status:
+          type: string
+        version:
+          type: string
+      type: object
+    HighLevelDocumentResponse:
+      properties:
+        content:
+          type: string
+        id:
+          type: integer
+        metadata:
+          $ref: "#/components/schemas/HighLevelDocumentMetadata"
+      type: object
+    HighLevelSearchFilters:
+      properties:
+        category:
+          example: netsuite
+          type: string
+        language:
+          example:
+            - en
+            - es
+          oneOf:
+            - type: string
+            - items:
+                type: string
+              type: array
+        status:
+          example: active
+          type: string
+        version_policy:
+          default: latest
+          description: Strategy for handling document versions
+          enum:
+            - latest
+            - all
+          type: string
+      type: object
+    HighLevelSearchRequest:
+      properties:
+        filters:
+          $ref: "#/components/schemas/HighLevelSearchFilters"
+        group_by:
+          description: Field to group results by (e.g. 'document_id')
+          example: document_id
+          type: string
+        group_limit:
+          default: 1
+          description: Max results per group
+          type: integer
+        query:
+          description: Natural language query text
+          example: oracle approval workflow
+          type: string
+        top_k:
+          default: 10
+          example: 10
+          type: integer
+      required:
+        - query
+      type: object
+    HighLevelSearchResponse:
+      properties:
+        query:
+          type: string
+        results:
+          items:
+            $ref: "#/components/schemas/HighLevelSearchResult"
+          type: array
+        top_k:
+          type: integer
+      type: object
+    HighLevelSearchResult:
+      properties:
+        document:
+          $ref: "#/components/schemas/HighLevelDocumentResponse"
+        score:
+          format: float
+          type: number
+      type: object
+    IngestEventRequest:
+      properties:
+        entity_id:
+          nullable: true
+          type: string
+        expires_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        id:
+          nullable: true
+          type: string
+        metadata:
+          nullable: true
+          type: object
+        session_id:
+          nullable: true
+          type: string
+        source:
+          nullable: true
+          type: string
+        text:
+          type: string
+      required:
+        - text
+      type: object
+    MemoryEdge:
+      properties:
+        created_at_ms:
+          format: uint64
+          type: integer
+        edge_type:
+          $ref: "#/components/schemas/EdgeType"
+        id:
+          type: string
+        metadata:
+          nullable: true
+          type: object
+        namespace:
+          type: string
+        source_id:
+          type: string
+        target_id:
+          type: string
+        weight:
+          description: Edge weight in [0, 1]. Used to scale the score contribution during
+            Semantic Walk BFS.
+          format: float
+          type: number
+      required:
+        - id
+        - namespace
+        - source_id
+        - target_id
+        - edge_type
+        - weight
+        - created_at_ms
+      type: object
+    MemoryEvidence:
+      properties:
+        kind:
+          $ref: "#/components/schemas/MemoryKind"
+        memory_id:
+          type: string
+        score:
+          format: float
+          type: number
+        snippet:
+          type: string
+        source:
+          type: string
+      required:
+        - memory_id
+        - kind
+        - score
+        - source
+        - snippet
+      type: object
+    MemoryKind:
+      enum:
+        - episodic
+        - semantic
+        - procedural
+        - working
+      type: string
+    MemoryQueryMode:
+      enum:
+        - auto
+        - recall
+        - timeline
+        - next_step
+        - constraint_check
+      type: string
+    MemoryQueryRequest:
+      properties:
+        context:
+          nullable: true
+          type: object
+        current_node_id:
+          nullable: true
+          type: string
+        entity_id:
+          nullable: true
+          type: string
+        include_diagnostics:
+          nullable: true
+          type: boolean
+        include_evidence:
+          nullable: true
+          type: boolean
+        include_plan:
+          nullable: true
+          type: boolean
+        limit:
+          nullable: true
+          type: integer
+        mode:
+          allOf:
+            - $ref: "#/components/schemas/MemoryQueryMode"
+          nullable: true
+        procedure_id:
+          nullable: true
+          type: string
+        query:
+          type: string
+        session_id:
+          nullable: true
+          type: string
+      required:
+        - query
+      type: object
+    MemoryQueryResponse:
+      properties:
+        diagnostics:
+          nullable: true
+          type: object
+        evidence:
+          items:
+            $ref: "#/components/schemas/MemoryEvidence"
+          nullable: true
+          type: array
+        mode:
+          $ref: "#/components/schemas/MemoryQueryMode"
+        next_step:
+          allOf:
+            - $ref: "#/components/schemas/NextStepResponse"
+          nullable: true
+        plan:
+          nullable: true
+          type: object
+        results:
+          items:
+            $ref: "#/components/schemas/MemoryResult"
+          type: array
+      required:
+        - mode
+        - results
+      type: object
+    MemoryRecord:
+      properties:
+        confidence:
+          format: float
+          type: number
+        content:
+          type: string
+        created_at_ms:
+          format: uint64
+          type: integer
+        decay_score:
+          default: 1
+          description: >
+            Exponential decay score in [0, 1]. Decreases over time according to
+            `exp(-ln(2)/half_life_days * elapsed_days)`. Facts below
+            `memory_decay_archive_threshold` are archived automatically by the
+            background decay task (opt-in via `memory_decay_enabled`).
+          format: float
+          type: number
+        embedding_ref:
+          nullable: true
+          type: string
+        entity_id:
+          nullable: true
+          type: string
+        expires_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        id:
+          type: string
+        kind:
+          $ref: "#/components/schemas/MemoryKind"
+        metadata:
+          nullable: true
+          type: object
+        namespace:
+          type: string
+        source:
+          type: string
+        status:
+          $ref: "#/components/schemas/MemoryStatus"
+        updated_at_ms:
+          format: uint64
+          type: integer
+      required:
+        - id
+        - namespace
+        - kind
+        - status
+        - content
+        - confidence
+        - source
+        - created_at_ms
+        - updated_at_ms
+      type: object
+    MemoryResult:
+      properties:
+        record:
+          $ref: "#/components/schemas/MemoryRecord"
+        score:
+          format: float
+          nullable: true
+          type: number
+      required:
+        - record
+      type: object
+    MemoryStatus:
+      enum:
+        - draft
+        - active
+        - archived
+      type: string
+    MetadataFilter:
+      description: >
+        Composable typed filter tree. Leaf operators: `eq`, `neq`, `gt`, `gte`,
+        `lt`, `lte`, `in`, `not_in`, `any_of`, `contains`, `starts_with`,
+        `exists`. Logical combinators: `and`, `or`, `not`.
+      example:
+        field: tax_system
+        op: eq
+        value: suitetax
+      type: object
+    NextStepRequest:
+      properties:
+        context:
+          nullable: true
+          type: object
+        current_node_id:
+          nullable: true
+          type: string
+        procedure_id:
+          type: string
+      required:
+        - procedure_id
+      type: object
+    NextStepResponse:
+      properties:
+        blocked_reason:
+          nullable: true
+          type: string
+        current_node_id:
+          nullable: true
+          type: string
+        edge:
+          allOf:
+            - $ref: "#/components/schemas/ProcedureEdge"
+          nullable: true
+        next_node:
+          allOf:
+            - $ref: "#/components/schemas/ProcedureNode"
+          nullable: true
+        procedure_id:
+          type: string
+      required:
+        - procedure_id
+      type: object
+    NodeEdgesResponse:
+      properties:
+        incoming:
+          items:
+            $ref: "#/components/schemas/MemoryEdge"
+          type: array
+        memory_id:
+          type: string
+        outgoing:
+          items:
+            $ref: "#/components/schemas/MemoryEdge"
+          type: array
+      required:
+        - memory_id
+        - outgoing
+        - incoming
+      type: object
+    ProcedureConstraint:
+      properties:
+        condition:
+          $ref: "#/components/schemas/RuleCondition"
+        constraint_id:
+          type: string
+        message:
+          nullable: true
+          type: string
+        target_node_id:
+          nullable: true
+          type: string
+      required:
+        - constraint_id
+        - condition
+      type: object
+    ProcedureEdge:
+      properties:
+        condition:
+          allOf:
+            - $ref: "#/components/schemas/RuleCondition"
+          nullable: true
+        from_node_id:
+          type: string
+        priority:
+          default: 0
+          type: integer
+        to_node_id:
+          type: string
+      required:
+        - from_node_id
+        - to_node_id
+      type: object
+    ProcedureNode:
+      properties:
+        kind:
+          enum:
+            - start
+            - action
+            - decision
+            - goal
+          type: string
+        label:
+          type: string
+        node_id:
+          type: string
+        payload:
+          nullable: true
+          type: object
+      required:
+        - node_id
+        - kind
+        - label
+      type: object
+    PutStateRequest:
+      properties:
+        if_revision:
+          description: "Optimistic locking: only update if current revision matches this."
+          format: uint64
+          nullable: true
+          type: integer
+        ttl_ms:
+          description: Time-to-live in milliseconds
+          format: uint64
+          nullable: true
+          type: integer
+        value:
+          example:
+            days: 30
+          type: object
+      required:
+        - value
+      type: object
+    PutStateResponse:
+      properties:
+        expires_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        key:
+          type: string
+        revision:
+          format: uint64
+          type: integer
+      required:
+        - key
+        - revision
+      type: object
+    RerankRequest:
+      properties:
+        ids:
+          description: IDs to rerank. Must exist in the collection.
+          items:
+            type: string
+          type: array
+        query_text:
+          description: Natural-language query. Embedded on the server side. Mutually
+            exclusive with `query_vector`.
+          nullable: true
+          type: string
+        query_vector:
+          description: Pre-computed query vector. Mutually exclusive with `query_text`.
+          items:
+            format: float
+            type: number
+          nullable: true
+          type: array
+      required:
+        - ids
+      type: object
+    RerankResponse:
+      properties:
+        ranked:
+          description: IDs sorted by cosine similarity descending.
+          items:
+            properties:
+              id:
+                type: string
+              score:
+                format: float
+                type: number
+            required:
+              - id
+              - score
+            type: object
+          type: array
+      required:
+        - ranked
+      type: object
+    RuleCondition:
+      properties:
+        field:
+          example: actor.role
+          type: string
+        op:
+          enum:
+            - eq
+            - neq
+            - gt
+            - gte
+            - lt
+            - lte
+            - contains
+            - in
+          type: string
+        value: {}
+      required:
+        - field
+        - op
+        - value
+      type: object
+    ScrollItem:
+      properties:
+        id:
+          type: string
+        meta:
+          nullable: true
+          type: object
+        vector:
+          description: Present only when `include_vectors=true`.
+          items:
+            format: float
+            type: number
+          nullable: true
+          type: array
+      required:
+        - id
+        - meta
+      type: object
+    ScrollResponse:
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/ScrollItem"
+          type: array
+        next_cursor:
+          description: Opaque cursor for the next page. Null when there are no more items.
+          nullable: true
+          type: string
+      required:
+        - items
+      type: object
+    ServerConfig:
+      description: >
+        Full server configuration. All fields are optional on PUT — omitted
+        fields keep their current value. A server restart is required for
+        changes to take effect. Fields whose names contain `api_key` or
+        `llm_api_key` are sensitive and should be treated accordingly.
+      properties:
+        api_key:
+          description: Master bearer token. Write-only — returned masked on GET.
+          example: dev
+          type: string
+        bind_addr:
+          example: 0.0.0.0
+          type: string
+        cors_allowed_origins:
+          description: Comma-separated origin list, or `*`. Null disables CORS headers.
+          nullable: true
+          type: string
+        data_dir:
+          example: data
+          nullable: true
+          type: string
+        diskann_build_threads:
+          default: 4
+          type: integer
+        diskann_max_degree:
+          default: 64
+          type: integer
+        diskann_search_list_size:
+          default: 128
+          type: integer
+        embedding_azure_api_base:
+          example: https://my-resource.openai.azure.com
+          type: string
+        embedding_azure_api_version:
+          default: 2024-02-01
+          type: string
+        embedding_azure_deployment:
+          example: text-embedding-3-small
+          type: string
+        embedding_cache_size:
+          default: 1024
+          type: integer
+        embedding_cohere_input_type:
+          default: search_document
+          enum:
+            - search_document
+            - search_query
+          type: string
+        embedding_dim:
+          default: 1536
+          type: integer
+        embedding_model:
+          example: text-embedding-3-small
+          type: string
+        embedding_provider:
+          default: none
+          enum:
+            - none
+            - mock
+            - openai
+            - azure
+            - cohere
+            - huggingface
+            - ollama
+          type: string
+        embedding_retry_attempts:
+          default: 3
+          type: integer
+        embedding_retry_initial_ms:
+          default: 200
+          format: uint64
+          type: integer
+        embedding_url:
+          example: http://localhost:11434
+          type: string
+        hnsw_ef_construction:
+          default: 200
+          type: integer
+        hnsw_m:
+          default: 16
+          type: integer
+        hnsw_segment_compaction_enabled:
+          default: false
+          type: boolean
+        hnsw_segment_compaction_interval_secs:
+          default: 60
+          format: uint64
+          type: integer
+        hnsw_segment_compaction_threshold:
+          default: 0.5
+          format: float
+          type: number
+        index_kind:
+          default: HNSW
+          enum:
+            - HNSW
+            - IVF_FLAT_Q8
+            - DiskANN
+          type: string
+        ivf_clusters:
+          default: 256
+          type: integer
+        ivf_nprobe:
+          default: 32
+          type: integer
+        llm_model:
+          example: gpt-4o-mini
+          type: string
+        llm_provider:
+          default: none
+          enum:
+            - none
+            - mock
+            - openai
+            - ollama
+          type: string
+        llm_url:
+          example: http://localhost:11434
+          type: string
+        max_body_bytes:
+          default: 10485760
+          type: integer
+        max_collection_vectors:
+          default: 0
+          description: Maximum vectors per collection. 0 = unlimited.
+          type: integer
+        memory_centrality_enabled:
+          default: true
+          type: boolean
+        memory_centrality_update_interval_secs:
+          default: 300
+          format: uint64
+          type: integer
+        memory_consolidation_enabled:
+          default: false
+          type: boolean
+        memory_decay_archive_threshold:
+          default: 0.1
+          format: float
+          type: number
+        memory_decay_enabled:
+          default: false
+          type: boolean
+        memory_decay_half_life_days:
+          default: 30
+          format: double
+          type: number
+        memory_decay_interval_secs:
+          default: 3600
+          format: uint64
+          type: integer
+        memory_default_limit:
+          default: 10
+          type: integer
+        memory_fact_promotion_threshold:
+          default: 0.85
+          format: float
+          type: number
+        memory_walk_max_hops:
+          default: 2
+          type: integer
+        memory_walk_max_nodes:
+          default: 40
+          type: integer
+        memory_walk_min_similarity:
+          default: 0.65
+          format: float
+          type: number
+        memory_working_ttl_secs:
+          default: 3600
+          format: uint64
+          type: integer
+        port:
+          default: 8080
+          example: 9917
+          type: integer
+        pre_filter_threshold:
+          default: 10000
+          type: integer
+        q8_refine_topk:
+          default: 100
+          type: integer
+        request_timeout_secs:
+          default: 30
+          format: uint64
+          type: integer
+        search_threads:
+          default: 0
+          description: 0 = use all available cores.
+          type: integer
+        simd_enabled:
+          default: true
+          type: boolean
+        slow_query_threshold_ms:
+          default: 0
+          description: Emit a warning log for searches exceeding this latency. 0 = disabled.
+          format: uint64
+          type: integer
+        snapshot_interval_secs:
+          default: 30
+          format: uint64
+          type: integer
+        wal_batch_size:
+          default: 64
+          type: integer
+        wal_flush_interval_ms:
+          default: 10
+          format: uint64
+          type: integer
+        wal_retention_segments:
+          default: 10
+          type: integer
+        wal_segment_max_bytes:
+          default: 67108864
+          format: uint64
+          type: integer
+        wal_sync_mode:
+          default: group
+          enum:
+            - per_write
+            - group
+          type: string
+      type: object
+    SqlExecResponse:
+      properties:
+        rows_affected:
+          format: uint64
+          type: integer
+      type: object
+    SqlQueryRequest:
+      properties:
+        params:
+          example:
+            - 123
+          items: {}
+          type: array
+        sql:
+          example: SELECT * FROM users WHERE id = ?
+          type: string
+      required:
+        - sql
+      type: object
+    SqlQueryResponse:
+      properties:
+        rows:
+          items: {}
+          type: array
+      type: object
+    StateBatchOperation:
+      properties:
+        if_revision:
+          format: uint64
+          nullable: true
+          type: integer
+        key:
+          type: string
+        ttl_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        value:
+          type: object
+      required:
+        - key
+        - value
+      type: object
+    StateBatchResponse:
+      properties:
+        results:
+          items:
+            $ref: "#/components/schemas/StateBatchResult"
+          type: array
+      type: object
+    StateBatchResult:
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+          nullable: true
+        expires_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        key:
+          type: string
+        revision:
+          format: uint64
+          nullable: true
+          type: integer
+        status:
+          enum:
+            - ok
+            - error
+          type: string
+      type: object
+    StateItem:
+      properties:
+        expires_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        key:
+          example: config/retention
+          type: string
+        revision:
+          description: Monotonically increasing revision ID. Used for CAS.
+          example: 105
+          format: uint64
+          type: integer
+        value:
+          example:
+            days: 30
+          type: object
+      required:
+        - key
+        - value
+        - revision
+      type: object
+    TimelineResponse:
+      properties:
+        entity_id:
+          type: string
+        events:
+          items:
+            $ref: "#/components/schemas/MemoryRecord"
+          type: array
+      required:
+        - entity_id
+        - events
+      type: object
+    UpsertEdgeRequest:
+      properties:
+        edge_type:
+          $ref: "#/components/schemas/EdgeType"
+        id:
+          description: Optional idempotent edge ID. Auto-generated UUID if omitted.
+          nullable: true
+          type: string
+        metadata:
+          nullable: true
+          type: object
+        source_id:
+          type: string
+        target_id:
+          type: string
+        weight:
+          default: 1
+          format: float
+          nullable: true
+          type: number
+      required:
+        - source_id
+        - target_id
+        - edge_type
+      type: object
+    UpsertFactRequest:
+      properties:
+        confidence:
+          format: float
+          nullable: true
+          type: number
+        content:
+          type: string
+        entity_id:
+          nullable: true
+          type: string
+        fact_key:
+          nullable: true
+          type: string
+        id:
+          nullable: true
+          type: string
+        metadata:
+          nullable: true
+          type: object
+        source:
+          nullable: true
+          type: string
+        status:
+          allOf:
+            - $ref: "#/components/schemas/MemoryStatus"
+          nullable: true
+      required:
+        - content
+      type: object
+    UpsertProcedureRequest:
+      properties:
+        confidence:
+          format: float
+          nullable: true
+          type: number
+        constraints:
+          items:
+            $ref: "#/components/schemas/ProcedureConstraint"
+          type: array
+        description:
+          nullable: true
+          type: string
+        edges:
+          items:
+            $ref: "#/components/schemas/ProcedureEdge"
+          type: array
+        name:
+          type: string
+        nodes:
+          items:
+            $ref: "#/components/schemas/ProcedureNode"
+          type: array
+        procedure_id:
+          type: string
+        source:
+          nullable: true
+          type: string
+        status:
+          enum:
+            - draft
+            - active
+            - archived
+          nullable: true
+          type: string
+        version:
+          format: int64
+          nullable: true
+          type: integer
+      required:
+        - procedure_id
+        - name
+        - nodes
+        - edges
+      type: object
+    VectorAddRequest:
+      properties:
+        id:
+          example: doc_v1_101
+          type: string
+        meta:
+          description: Arbitrary JSON metadata
+          example:
+            category: finance
+            year: 2024
+          type: object
+        vector:
+          description: Floating point vector data
+          example:
+            - 0.1
+            - 0.23
+            - -0.5
+            - 0.8
+          items:
+            format: float
+            type: number
+          type: array
+      required:
+        - id
+        - vector
+      type: object
+    VectorBatchItem:
+      properties:
+        id:
+          type: string
+        meta: {}
+        vector:
+          items:
+            format: float
+            type: number
+          type: array
+      required:
+        - id
+        - vector
+      type: object
+    VectorBatchResponse:
+      properties:
+        results:
+          items:
+            $ref: "#/components/schemas/VectorBatchResult"
+          type: array
+      type: object
+    VectorBatchResult:
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+          nullable: true
+        id:
+          type: string
+        status:
+          enum:
+            - upserted
+            - deleted
+            - error
+          type: string
+      type: object
+    VectorCollectionDetailResponse:
+      properties:
+        collection:
+          type: string
+        count:
+          nullable: true
+          type: integer
+        created_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        deleted:
+          format: uint64
+          nullable: true
+          type: integer
+        dim:
+          nullable: true
+          type: integer
+        manifest:
+          nullable: true
+          type: object
+        metric:
+          $ref: "#/components/schemas/VectorMetric"
+          nullable: true
+        notes:
+          nullable: true
+          type: string
+        segments:
+          nullable: true
+          type: integer
+        updated_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+      required:
+        - collection
+      type: object
+    VectorCollectionInfo:
+      properties:
+        applied_offset:
+          format: uint64
+          type: integer
+        collection:
+          type: string
+        created_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        dim:
+          type: integer
+        file_len:
+          format: uint64
+          type: integer
+        live_count:
+          format: uint64
+          type: integer
+        metric:
+          $ref: "#/components/schemas/VectorMetric"
+        total_records:
+          format: uint64
+          type: integer
+        updated_at_ms:
+          format: uint64
+          nullable: true
+          type: integer
+        upsert_count:
+          format: uint64
+          type: integer
+      required:
+        - collection
+        - dim
+        - metric
+        - live_count
+        - total_records
+        - upsert_count
+        - file_len
+        - applied_offset
+      type: object
+    VectorCollectionsResponse:
+      properties:
+        collections:
+          items:
+            $ref: "#/components/schemas/VectorCollectionInfo"
+          type: array
+      type: object
+    VectorDeleteRequest:
+      properties:
+        id:
+          type: string
+      required:
+        - id
+      type: object
+    VectorDeleteResponse:
+      properties:
+        deleted:
+          type: boolean
+      required:
+        - deleted
+      type: object
+    VectorGetResponse:
+      properties:
+        id:
+          type: string
+        meta: {}
+        vector:
+          items:
+            format: float
+            type: number
+          type: array
+      required:
+        - id
+        - vector
+        - meta
+      type: object
+    VectorMetric:
+      enum:
+        - cosine
+        - dot
+      example: cosine
+      type: string
+    VectorSearchBatchRequest:
+      properties:
+        queries:
+          description: Up to 100 search queries executed in parallel via rayon.
+          items:
+            $ref: "#/components/schemas/VectorSearchRequest"
+          maxItems: 100
+          minItems: 1
+          type: array
+      required:
+        - queries
+      type: object
+    VectorSearchBatchResponse:
+      properties:
+        results:
+          description: One result per query in the same order as the request.
+          items:
+            $ref: "#/components/schemas/VectorSearchResponse"
+          type: array
+      required:
+        - results
+      type: object
+    VectorSearchHit:
+      properties:
+        id:
+          type: string
+        meta:
+          nullable: true
+        score:
+          format: float
+          type: number
+      required:
+        - id
+        - score
+      type: object
+    VectorSearchRequest:
+      properties:
+        filters:
+          description: Exact match metadata filters
+          example:
+            category: finance
+          nullable: true
+        include_meta:
+          default: false
+          nullable: true
+          type: boolean
+        k:
+          example: 5
+          minimum: 1
+          type: integer
+        vector:
+          example:
+            - 0.1
+            - 0.23
+            - -0.5
+            - 0.8
+          items:
+            format: float
+            type: number
+          type: array
+      required:
+        - vector
+        - k
+      type: object
+    VectorSearchResponse:
+      properties:
+        hits:
+          items:
+            $ref: "#/components/schemas/VectorSearchHit"
+          type: array
+      required:
+        - hits
+      type: object
+    VectorUpdateRequest:
+      properties:
+        id:
+          type: string
+        meta:
+          nullable: true
+        vector:
+          items:
+            format: float
+            type: number
+          nullable: true
+          type: array
+      required:
+        - id
+      type: object
+  securitySchemes:
+    bearerAuth:
+      description: Enter your API Key (default is `dev`)
+      scheme: bearer
+      type: http
+info:
+  description: >
+    API documentation for **Luma**, a convergent data engine for AI
+    applications.
+
+
+    ## Features
+
+    - **Vector Operations**: Exact and ANN search (HNSW, IVF_FLAT_Q8, DiskANN).
+    Includes batch search (up to 100 parallel queries), cursor-based
+    scroll/export, cosine reranking, and group-by aggregations.
+
+    - **State Management**: Key-Value store with optimistic locking (CAS) and
+    range scans.
+
+    - **Document Store**: Raw document storage linked to vectors.
+
+    - **LumaDatabase (Level 2)**: Auto-chunking, embedding generation, hybrid
+    SQL+vector search.
+
+    - **NS-Mem (Level 3)**: Agent memory layer — episodic, semantic, procedural
+    and working memory with LLM-based fact consolidation. v3.0.0 adds semantic
+    deduplication (cosine ≥ 0.95), exponential decay scoring, and automatic
+    contradiction detection (cosine < 0.55 → Contradicts edge).
+
+    - **NS-Mem Graph Layer (v2.0.0)**: Typed edges between memories (supports,
+    contradicts, supersedes, triggered_by, related_to), PageRank centrality,
+    belief versioning, and Semantic Walk BFS recall replacing flat K-NN.
+
+    - **Embedding Providers**: OpenAI, Azure OpenAI, Cohere, HuggingFace
+    Inference API, Ollama, Mock. All providers support exponential-backoff retry
+    with jitter.
+
+    - **Observability**: Audit log middleware (every authenticated request
+    logged to SQLite), query via `GET /v1/admin/audit`. Force snapshots via
+    `POST /v1/admin/backup`.
+
+    - **Access Control**: RBAC API key management — admin and user roles. Keys
+    created, listed and revoked via `/v1/auth/keys`.
+
+    - **Real-time**: SSE streaming of database events.
+  title: Luma API
+  version: 3.0.0
+openapi: 3.0.3
+paths:
+  /search:
+    post:
+      deprecated: true
+      description: >
+        **DEPRECATED**. Please use the new `LumaDatabase` Level 2 endpoints
+        (`/v1/db/{namespace}/search` and `/v1/db/{namespace}/ingest`) which
+        offer superior performance, SQL pre-filtering, and automatic chunking.
+
+
+        Performs a semantic search using a text query.
+
+        Currently uses **mock embeddings** (random deterministic) for testing
+        flows.
+
+        Supports advanced filtering and grouping for RAG.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HighLevelSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighLevelSearchResponse"
+          description: Search results
+        "500":
+          description: Internal Error
+      summary: High-level Semantic Search
+      tags:
+        - RAG Search
+  /v1/admin/audit:
+    get:
+      description: >
+        Returns audit log entries from SQLite, ordered by timestamp descending.
+        Every authenticated API request is recorded with timestamp, API key ID,
+        client IP, HTTP method, path, status code, and latency. Requires admin
+        role.
+      parameters:
+        - description: Start of the time range (Unix ms, inclusive).
+          in: query
+          name: from_ms
+          required: false
+          schema:
+            format: uint64
+            type: integer
+        - description: End of the time range (Unix ms, inclusive).
+          in: query
+          name: to_ms
+          required: false
+          schema:
+            format: uint64
+            type: integer
+        - description: Filter by API key ID (exact match).
+          in: query
+          name: key
+          required: false
+          schema:
+            type: string
+        - description: Maximum number of entries to return.
+          in: query
+          name: limit
+          required: false
+          schema:
+            default: 100
+            maximum: 1000
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/AuditEntry"
+                type: array
+          description: Audit log entries
+        "401":
+          description: Unauthorized
+        "403":
+          description: Admin role required
+      security:
+        - bearerAuth: []
+      summary: Query the audit log
+      tags:
+        - Admin
+  /v1/admin/backup:
+    post:
+      description: >
+        Triggers `engine.force_snapshot()` synchronously, rotating the current
+        WAL segment and writing a new `snapshot.json`. Returns the WAL offset at
+        the time of the snapshot. Requires admin role.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupResponse"
+          description: Snapshot created
+        "401":
+          description: Unauthorized
+        "403":
+          description: Admin role required
+      security:
+        - bearerAuth: []
+      summary: Force a WAL snapshot
+      tags:
+        - Admin
+  /v1/auth/keys:
+    get:
+      description: Returns all non-revoked API keys. The raw key value is never
+        returned after creation. Requires admin role.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ApiKeyRecord"
+                type: array
+          description: List of API key records
+        "401":
+          description: Unauthorized
+        "403":
+          description: Admin role required
+      security:
+        - bearerAuth: []
+      summary: List all API keys
+      tags:
+        - Access Control
+    post:
+      description: >
+        Creates a new API key with the given name and role. The raw key is
+        returned **only once** in the response — it cannot be retrieved later.
+        Requires admin role.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateApiKeyResponse"
+          description: Key created — save the `key` value now
+        "401":
+          description: Unauthorized
+        "403":
+          description: Admin role required
+      security:
+        - bearerAuth: []
+      summary: Create an API key
+      tags:
+        - Access Control
+  /v1/auth/keys/{id}:
+    delete:
+      description: >
+        Permanently revokes the key with the given ID. Any subsequent request
+        using that key returns 401. Idempotent — returns 204 even if the key was
+        already revoked. Requires admin role.
+      parameters:
+        - description: Key ID (UUID) as returned by the list or create endpoint.
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Key revoked
+        "401":
+          description: Unauthorized
+        "403":
+          description: Admin role required
+      security:
+        - bearerAuth: []
+      summary: Revoke an API key
+      tags:
+        - Access Control
+  /v1/config:
+    get:
+      description: >
+        Returns the full running configuration of the server. Sensitive fields
+        (`api_key`, `llm_api_key`, `embedding_api_key`) are included in the
+        response — restrict access to admin users.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerConfig"
+          description: Current configuration
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+      summary: Get current server configuration
+      tags:
+        - System
+    put:
+      description: >
+        Writes the supplied configuration to `luma.toml`. A **server restart**
+        is required for changes to take effect — the running process is not
+        reconfigured in-place. Only fields present in the body are written;
+        however the full `Config` struct is always serialised, so omitting a
+        field resets it to its default value. Send `GET /v1/config` first,
+        modify the fields you need, then `PUT` the whole object back.
+      requestBody:
+        content:
+          application/json:
+            example:
+              diskann_max_degree: 48
+              diskann_search_list_size: 160
+              embedding_model: text-embedding-3-small
+              embedding_provider: openai
+            schema:
+              $ref: "#/components/schemas/ServerConfig"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigUpdateResponse"
+          description: Configuration saved — restart required
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Invalid configuration payload
+        "401":
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Failed to write luma.toml
+      security:
+        - bearerAuth: []
+      summary: Update server configuration
+      tags:
+        - System
+  /v1/db/{namespace}/ingest:
+    post:
+      description: Automatically extracts text, chunks it, calls an Embedding
+        provider, and saves the vectors, the raw document, and relational
+        metadata synchronously with transactional safety.
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                id:
+                  description: Optional custom ID for the document. Auto-generated if omitted.
+                  type: string
+                metadata:
+                  description: Metadata attributes to save in SQLite for relational filtering.
+                  type: object
+                text:
+                  description: The full document text to process and chunk.
+                  type: string
+              required:
+                - text
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                properties:
+                  doc_id:
+                    type: string
+                  namespace:
+                    type: string
+                  status:
+                    type: string
+                type: object
+          description: Ingested successfully
+        "400":
+          description: Bad Request (e.g. dimension mismatch)
+        "500":
+          description: Internal Server Error (e.g. io_failure_during_transaction)
+      security:
+        - bearerAuth: []
+      summary: Ingest a document using the Unified Hub
+      tags:
+        - LumaDatabase
+  /v1/db/{namespace}/search:
+    post:
+      description: Performs a semantic search with SQL pre-filtering. Automatically
+        groups vector chunks and hydrates the full document.
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                limit:
+                  default: 10
+                  type: integer
+                query:
+                  description: The semantic question or search terms.
+                  type: string
+                sql_filter:
+                  description: Optional. A valid SQL WHERE clause to pre-filter documents (e.g.,
+                    "JSON_EXTRACT(metadata, '$.year') = 2024").
+                  type: string
+              required:
+                - query
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                properties:
+                  results:
+                    items:
+                      properties:
+                        document:
+                          type: object
+                        id:
+                          type: string
+                        score:
+                          format: float
+                          type: number
+                        snippets:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                type: object
+          description: Search results with grouped snippets
+        "500":
+          description: Internal Server Error
+      security:
+        - bearerAuth: []
+      summary: Hybrid RAG Search
+      tags:
+        - LumaDatabase
+  /v1/doc/{collection}/find:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                filter:
+                  nullable: true
+                limit:
+                  default: 20
+                  type: integer
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocFindResponse"
+          description: Found docs
+      security:
+        - bearerAuth: []
+      summary: Find docs by metadata
+      tags:
+        - Document Store
+  /v1/doc/{collection}/{id}:
+    delete:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Not found
+      security:
+        - bearerAuth: []
+      summary: Delete document
+      tags:
+        - Document Store
+    get:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocRecord"
+          description: Found
+        "404":
+          description: Not found
+      security:
+        - bearerAuth: []
+      summary: Retrieve document
+      tags:
+        - Document Store
+    put:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: Arbitrary JSON document
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocRecord"
+          description: Stored
+      security:
+        - bearerAuth: []
+      summary: Store document
+      tags:
+        - Document Store
+  /v1/events:
+    get:
+      deprecated: true
+      description: >
+        **DEPRECATED**: Use `/v1/stream` instead.
+
+
+        Legacy alias where `prefix` maps to `key_prefix`. Does not support
+        `collection` filter.
+      parameters:
+        - in: query
+          name: since
+          schema:
+            default: 0
+            format: uint64
+            type: integer
+        - in: query
+          name: types
+          schema:
+            type: string
+        - in: query
+          name: prefix
+          schema:
+            type: string
+      responses:
+        "200":
+          description: text/event-stream
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+      summary: Legacy SSE alias (Deprecated)
+      tags:
+        - Streaming
+  /v1/health:
+    get:
+      responses:
+        "200":
+          description: Server is healthy
+      summary: Health check
+      tags:
+        - System
+  /v1/memory/{namespace}/beliefs/{fact_key}/history:
+    get:
+      description: Returns all historical versions of a semantic fact, ordered newest
+        first. Every `upsert_fact` that overwrites an existing key appends a new
+        entry to this history.
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: fact_key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeliefHistoryResponse"
+          description: Version history for the belief
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: History lookup failed
+      security:
+        - bearerAuth: []
+      summary: Get belief version history for a fact key
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/edges:
+    post:
+      description: >-
+        Creates a directed, weighted edge of the graph layer. If an edge with
+        the same `id` already exists it is replaced (upsert semantics).
+
+        Auto-created edges: consolidation creates `triggered_by` (episodic →
+        semantic); `upsert_fact` on an existing fact creates `supersedes` (new →
+        archived).
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertEdgeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryEdge"
+          description: Edge created or replaced
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Edge creation failed
+      security:
+        - bearerAuth: []
+      summary: Create a typed edge between two memory records
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/edges/{edge_id}/delete:
+    post:
+      description: Removes a specific edge by its ID. Idempotent — returns 200 even if
+        the edge did not exist.
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: edge_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                properties:
+                  deleted:
+                    type: boolean
+                type: object
+          description: Edge deleted (or was already absent)
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Deletion failed
+      security:
+        - bearerAuth: []
+      summary: Delete a memory edge
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/edges/{memory_id}:
+    get:
+      description: Returns all outgoing and incoming edges of the specified memory record.
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: memory_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeEdgesResponse"
+          description: Outgoing and incoming edges
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Lookup failed
+      security:
+        - bearerAuth: []
+      summary: Get all edges for a memory node
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/graph/centrality:
+    post:
+      description: >-
+        Runs 15 iterations of PageRank (damping 0.85) over positive edges
+        (supports, triggered_by, related_to) and writes normalized [0,1] scores
+        back to `memory_records.centrality_score`. Scores are used during
+        Semantic Walk BFS to boost highly-connected nodes.
+
+        This operation is idempotent and safe to call at any time.
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CentralityResponse"
+          description: Centrality scores recomputed
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Centrality computation failed
+      security:
+        - bearerAuth: []
+      summary: Recompute PageRank centrality for the namespace
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/ingest_event:
+    post:
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestEventRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecord"
+          description: Episodic memory stored
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Ingest failed
+      security:
+        - bearerAuth: []
+      summary: Ingest an episodic memory event
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/next_step:
+    post:
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NextStepRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NextStepResponse"
+          description: Next procedural step
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Resolution failed
+      security:
+        - bearerAuth: []
+      summary: Resolve the next valid step of a procedure
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/query:
+    post:
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryQueryRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryQueryResponse"
+          description: Memory query response
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Query failed
+      security:
+        - bearerAuth: []
+      summary: Query memory across episodic, semantic and procedural layers
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/timeline/{entity_id}:
+    get:
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: entity_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineResponse"
+          description: Entity timeline
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Timeline lookup failed
+      security:
+        - bearerAuth: []
+      summary: Fetch the episodic timeline for an entity
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/upsert_fact:
+    post:
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertFactRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecord"
+          description: Semantic fact stored
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Upsert failed
+      security:
+        - bearerAuth: []
+      summary: Create or update a semantic memory fact
+      tags:
+        - NS-Mem
+  /v1/memory/{namespace}/upsert_procedure:
+    post:
+      parameters:
+        - in: path
+          name: namespace
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertProcedureRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+          description: Procedure stored
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Procedure upsert failed
+      security:
+        - bearerAuth: []
+      summary: Create or replace a procedural DAG
+      tags:
+        - NS-Mem
+  /v1/meta/{collection}/execute:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: A flexible query object that specifies type (vector, sql, hybrid)
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  type: object
+                type: array
+          description: Query results
+      security:
+        - bearerAuth: []
+      summary: Execute a Meta Engine query
+      tags:
+        - Meta
+  /v1/metrics:
+    get:
+      responses:
+        "200":
+          description: Metrics in text format
+      summary: Prometheus-compatible metrics
+      tags:
+        - System
+  /v1/sql/exec:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SqlQueryRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SqlExecResponse"
+          description: Execution result
+      security:
+        - bearerAuth: []
+      summary: Execute DDL/DML
+      tags:
+        - SQL
+  /v1/sql/query:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SqlQueryRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SqlQueryResponse"
+          description: Result set
+      security:
+        - bearerAuth: []
+      summary: Execute SELECT query
+      tags:
+        - SQL
+  /v1/state:
+    get:
+      parameters:
+        - in: query
+          name: prefix
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            default: 100
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/StateItem"
+                type: array
+          description: List of state items
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+      summary: List keys
+      tags:
+        - State Management
+  /v1/state/batch_put:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                operations:
+                  items:
+                    $ref: "#/components/schemas/StateBatchOperation"
+                  type: array
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateBatchResponse"
+          description: Batch result
+      security:
+        - bearerAuth: []
+      summary: Batch put keys
+      tags:
+        - State Management
+  /v1/state/index/{field}/{value}:
+    get:
+      description: >
+        Returns all state items whose `value.{field}` equals `{value}`. Requires
+        a prior call to `POST /v1/state/indexes` for this field. Results are
+        unordered. Use `limit` to cap the result set (max 1000).
+      parameters:
+        - description: The JSON field name that was indexed.
+          example: user_id
+          in: path
+          name: field
+          required: true
+          schema:
+            type: string
+        - description: The exact value to match.
+          example: "42"
+          in: path
+          name: value
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            default: 100
+            maximum: 1000
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/StateItem"
+                type: array
+          description: Matching state items
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+      summary: Query state by secondary index
+      tags:
+        - State Management
+  /v1/state/indexes:
+    post:
+      description: >
+        Registers a secondary in-memory index on a JSON field inside state
+        values. Once created, `GET /v1/state/index/{field}/{value}` performs
+        O(1) lookups instead of a full key scan. Indexes survive as long as the
+        server is running but are not persisted to disk — recreate them after a
+        restart.
+
+
+        Creating an index on an already-indexed field is a no-op.
+      requestBody:
+        content:
+          application/json:
+            example:
+              field: user_id
+            schema:
+              $ref: "#/components/schemas/CreateStateIndexRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateStateIndexResponse"
+          description: Index created (or already existed)
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Invalid field name
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+      summary: Create a secondary index on a state field
+      tags:
+        - State Management
+  /v1/state/{key}:
+    delete:
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteStateResponse"
+          description: Deleted
+      security:
+        - bearerAuth: []
+      summary: Delete key
+      tags:
+        - State Management
+    get:
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateItem"
+          description: Found
+        "404":
+          description: Key not found
+      security:
+        - bearerAuth: []
+      summary: Get key value
+      tags:
+        - State Management
+    put:
+      description: Supports Optimistic Locking via `if_revision`.
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutStateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PutStateResponse"
+          description: Updated successfully
+        "409":
+          description: Revision mismatch (CAS failed)
+      security:
+        - bearerAuth: []
+      summary: Set key value
+      tags:
+        - State Management
+  /v1/stream:
+    get:
+      description: >
+        Subscribe to database events (upserts, state changes) via Server-Sent
+        Events.
+
+        Supports filtering by type, key prefix, and collection.
+      parameters:
+        - description: Offset/event_id to replay from. Default 0.
+          in: query
+          name: since
+          schema:
+            default: 0
+            format: uint64
+            type: integer
+        - description: Comma-separated event types (e.g., `vector_upserted,state_changed`).
+          in: query
+          name: types
+          schema:
+            type: string
+        - description: Filter events by key prefix.
+          in: query
+          name: key_prefix
+          schema:
+            type: string
+        - description: Filter events by collection name.
+          in: query
+          name: collection
+          schema:
+            type: string
+        - in: header
+          name: Last-Event-ID
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: Stream of events
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+      summary: Real-time Event Stream (SSE)
+      tags:
+        - Streaming
+  /v1/vector:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorCollectionsResponse"
+          description: List of collections
+      security:
+        - bearerAuth: []
+      summary: List all collections
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}:
+    get:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorCollectionDetailResponse"
+          description: Details
+        "404":
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Get collection details
+      tags:
+        - Vector Operations
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVectorCollectionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateVectorCollectionResponse"
+          description: Created
+        "409":
+          description: Collection already exists
+      security:
+        - bearerAuth: []
+      summary: Create new collection
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/add:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VectorAddRequest"
+        required: true
+      responses:
+        "200":
+          description: Added
+        "409":
+          description: ID already exists
+      security:
+        - bearerAuth: []
+      summary: Add vector (fail if exists)
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/aggregate:
+    post:
+      description: >
+        Groups vectors by a metadata field and returns bucket counts. Uses the
+        keyword index fast path (O(1) per bucket) when the field is indexed.
+        Falls back to a full scan with `evaluate_filter` for complex filter
+        expressions. Supports the same typed `MetadataFilter` as search.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            example:
+              filter:
+                field: status
+                op: eq
+                value: active
+              group_by: tax_system
+              limit: 20
+            schema:
+              $ref: "#/components/schemas/AggregateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AggregateResponse"
+          description: Buckets sorted by count descending
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Aggregate / group-by on metadata fields
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/delete:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VectorDeleteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorDeleteResponse"
+          description: Deleted
+        "404":
+          description: ID not found
+      security:
+        - bearerAuth: []
+      summary: Delete vector
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/delete_batch:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                ids:
+                  items:
+                    type: string
+                  type: array
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorBatchResponse"
+          description: Batch results
+      security:
+        - bearerAuth: []
+      summary: Batch Delete
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/diskann/build:
+    post:
+      description: >
+        Triggers a full Vamana graph build for the collection. The build runs
+        synchronously and may take seconds to minutes depending on collection
+        size and `build_threads`. Once complete the index is immediately active
+        for approximate search queries.
+
+
+        All body fields are optional — omitted values fall back to the server's
+        `diskann_*` configuration defaults.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            example:
+              build_threads: 4
+              max_degree: 32
+              search_list_size: 128
+            schema:
+              $ref: "#/components/schemas/DiskAnnBuildRequest"
+        required: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiskAnnMutationResponse"
+          description: Index built successfully
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Build failed
+      security:
+        - bearerAuth: []
+      summary: Build DiskANN index
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/diskann/status:
+    get:
+      description: >
+        Returns whether a DiskANN graph is built and loaded for this collection,
+        its build timestamp, the list of graph segment files, and the effective
+        build parameters.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiskAnnStatusResponse"
+          description: Status retrieved
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Get DiskANN index status
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/diskann/tune:
+    post:
+      description: >
+        Updates DiskANN search parameters (`search_list_size`, `max_degree`)
+        without rebuilding the graph from scratch. Useful to adjust
+        recall/latency tradeoffs on an already-built index. A full rebuild is
+        not triggered.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            example:
+              search_list_size: 200
+            schema:
+              $ref: "#/components/schemas/DiskAnnBuildRequest"
+        required: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiskAnnMutationResponse"
+          description: Parameters applied
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Tune DiskANN search parameters
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/get:
+    get:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorGetResponse"
+          description: Found
+        "404":
+          description: Not found
+      security:
+        - bearerAuth: []
+      summary: Get vector by ID
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/rerank:
+    post:
+      description: >
+        Retrieves the stored vectors for the given IDs and re-scores them
+        against the query (text or pre-computed vector) using cosine similarity.
+        Returns the same IDs sorted by score descending. Useful as a
+        second-stage ranker after an ANN search.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RerankRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RerankResponse"
+          description: IDs sorted by cosine similarity descending
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Invalid request (e.g. both query_text and query_vector provided)
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Rerank vectors by cosine similarity
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/scroll:
+    get:
+      description: >
+        Iterates over all vectors in a collection using an opaque lexicographic
+        cursor. Use `next_cursor` from the previous response as the `cursor`
+        parameter of the next request. Returns an empty `items` array and
+        `next_cursor: null` when the collection is exhausted. Suitable for full
+        collection exports.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+        - description: Opaque cursor from a previous response. Omit to start from the
+            beginning.
+          in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+        - description: Number of items per page.
+          in: query
+          name: limit
+          required: false
+          schema:
+            default: 100
+            maximum: 1000
+            minimum: 1
+            type: integer
+        - description: Include the raw vector data in each item.
+          in: query
+          name: include_vectors
+          required: false
+          schema:
+            default: false
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScrollResponse"
+          description: Page of items with optional next cursor
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Scroll / cursor-based pagination
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/search:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VectorSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorSearchResponse"
+          description: Search results
+      security:
+        - bearerAuth: []
+      summary: Low-level Vector Search (KNN)
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/search_batch:
+    post:
+      description: >
+        Executes up to 100 `SearchRequest` objects in parallel using
+        `rayon::par_iter()`. Returns one result array per query in the same
+        order as the input. Useful for RAG pipelines that fan out many queries
+        in a single round-trip.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VectorSearchBatchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorSearchBatchResponse"
+          description: One result set per query
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Invalid request (e.g. more than 100 queries)
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+          description: Collection not found
+      security:
+        - bearerAuth: []
+      summary: Batch vector search (up to 100 queries in parallel)
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/update:
+    post:
+      description: Update vector or metadata for an existing ID. Fails if ID not found.
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VectorUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: Updated
+        "404":
+          description: ID not found
+      security:
+        - bearerAuth: []
+      summary: Partial Update
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/upsert:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VectorAddRequest"
+        required: true
+      responses:
+        "200":
+          description: Upserted
+      security:
+        - bearerAuth: []
+      summary: Upsert vector (Insert or Update)
+      tags:
+        - Vector Operations
+  /v1/vector/{collection}/upsert_batch:
+    post:
+      parameters:
+        - in: path
+          name: collection
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                items:
+                  items:
+                    $ref: "#/components/schemas/VectorBatchItem"
+                  type: array
+              type: object
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorBatchResponse"
+          description: Batch results
+      security:
+        - bearerAuth: []
+      summary: Batch Upsert
+      tags:
+        - Vector Operations
+servers:
+  - description: Current Server
+    url: http://luma.deepgen.qzz.io
+tags:
+  - description: High-level semantic search API (Text-to-Vector abstraction)
+    name: RAG Search
+  - description: Core vector database operations (Collections, Upsert, Search)
+    name: Vector Operations
+  - description: Distributed Key-Value store with CAS (Compare-And-Swap) support
+    name: State Management
+  - description: Real-time event subscription (SSE)
+    name: Streaming
+  - description: Storage for raw documents and metadata
+    name: Document Store
+  - description: SQLite bridge for relational data
+    name: SQL
+  - description: Health checks and metrics
+    name: System
+  - description: Meta Engine integrated operations
+    name: Meta
+  - description: High-level unified orchestrator (Nivel 2) for complex RAG flows,
+      chunking, and multi-engine coordination.
+    name: LumaDatabase
+  - description: Memory layer for episodic, semantic, procedural and working-memory flows.
+    name: NS-Mem
+  - description: Backup, audit log and operational endpoints. Require admin role.
+    name: Admin
+  - description: API key management — create, list and revoke keys. Require admin role.
+    name: Access Control

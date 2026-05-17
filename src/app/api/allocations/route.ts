@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllocations, getResources, getUsers, getProjects, createResource, createAllocation, getAllocations as getAllocationsFromDocs } from '@/lib/luma-docs';
+import { getAllocations, getResources, getUsers, getProjects, createResource, createAllocation } from '@/lib/luma-docs';
 import { luma } from '@/lib/luma';
 
 export async function GET(request: Request) {
@@ -91,19 +91,15 @@ export async function PUT(request: Request) {
       );
     }
     
-    // Get all allocations and find the one to update
-    const allAllocations = await getAllocationsFromDocs();
-    const existing = allAllocations.find(a => a.id === id);
-    
-    if (!existing) {
+    const result = await luma.getDoc<Record<string, unknown>>('allocations', id);
+    if (!result) {
       return NextResponse.json(
         { error: 'Allocation not found', success: false },
         { status: 404 }
       );
     }
-    
-    const updated = { ...existing, allocatedHours };
-    await luma.putDoc('allocations', id, updated);
+
+    await luma.putDoc('allocations', id, { ...result.doc, allocatedHours });
     
     return NextResponse.json({ success: true });
   } catch (error) {

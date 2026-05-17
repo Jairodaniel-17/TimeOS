@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button, Card, KPICard, Badge } from '@/components/ui';
-import { Download, RefreshCw, TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, AlertTriangle } from 'lucide-react';
+import { Download, RefreshCw, TrendingUp, TrendingDown, AlertTriangle, X } from 'lucide-react';
 import { usePermissions, PermissionGate } from '@/hooks/usePermissions';
 import Link from 'next/link';
 
@@ -21,6 +21,18 @@ interface ProjectCost {
   currency: string;
   profit: number;
   profitMargin: number;
+  eac?: number;
+  cpi?: number;
+  spi?: number;
+}
+
+function calcMetrics(p: ProjectCost): { eac: number; cpi: number; spi: number } {
+  const pct = p.budgetHours > 0 ? Math.min(p.actualHours / p.budgetHours, 1) : 0;
+  const ev = p.budget * pct;
+  const cpi = p.actualCost > 0 ? ev / p.actualCost : 1;
+  const eac = cpi > 0 ? p.budget / cpi : p.budget;
+  const spi = p.budgetHours > 0 ? p.actualHours / p.budgetHours : 0;
+  return { eac, cpi, spi };
 }
 
 interface ResourceCost {
@@ -59,15 +71,19 @@ export default function CostsDashboard() {
   const fetchCostData = async () => {
     setLoading(true);
     try {
-      // Fetch projects with costs
-      const projectsRes = await fetch('/api/projects?withCosts=true');
-      const projectsData = await projectsRes.json();
-      
+      const [projectsRes, resourcesRes] = await Promise.all([
+        fetch('/api/projects?withCosts=true'),
+        fetch('/api/resources?withCosts=true'),
+      ]);
+      const [projectsData, resourcesData] = await Promise.all([
+        projectsRes.json(),
+        resourcesRes.json(),
+      ]);
+
       if (projectsData.success) {
         const projectsWithCosts = projectsData.data || [];
         setProjects(projectsWithCosts);
-        
-        // Calculate summary
+
         const summaryData: CostSummary = {
           totalBudget: projectsWithCosts.reduce((sum: number, p: ProjectCost) => sum + (p.budget || 0), 0),
           totalActualCost: projectsWithCosts.reduce((sum: number, p: ProjectCost) => sum + (p.actualCost || 0), 0),
@@ -84,10 +100,6 @@ export default function CostsDashboard() {
         setSummary(summaryData);
       }
 
-      // Fetch resources with costs
-      const resourcesRes = await fetch('/api/resources?withCosts=true');
-      const resourcesData = await resourcesRes.json();
-      
       if (resourcesData.success) {
         setResources(resourcesData.data || []);
       }
@@ -141,7 +153,7 @@ export default function CostsDashboard() {
           breadcrumbs={[{ label: 'TimeOS' }, { label: 'Costos' }]}
         />
         <PageContent className="flex items-center justify-center">
-          <div className="text-center py-12 text-[var(--color-text-secondary)]">
+          <div className="text-center py-12 text-redwood-muted">
             Cargando datos de costos...
           </div>
         </PageContent>
@@ -157,7 +169,7 @@ export default function CostsDashboard() {
         actions={
           <PermissionGate permission="reports:costs">
             <>
-              <Button variant="secondary" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchCostData}>
+              <Button variant="subtle" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchCostData}>
                 Actualizar
               </Button>
               <Button variant="primary" icon={<Download className="h-4 w-4" />} onClick={handleExport}>
@@ -175,35 +187,32 @@ export default function CostsDashboard() {
               <KPICard
                 label="Presupuesto Total"
                 value={`$${summary.totalBudget.toLocaleString()}`}
-                icon={<DollarSign className="h-5 w-5" />}
+                accent="primary"
               />
               <KPICard
                 label="Costo Real"
                 value={`$${summary.totalActualCost.toLocaleString()}`}
-                trend={parseFloat(utilization as string) > 100 ? 'up' : 'down'}
-                trendValue={`${utilization}% utilizado`}
-                icon={<BarChart3 className="h-5 w-5" />}
+                subtitle={`${utilization}% utilizado`}
+                accent={parseFloat(utilization as string) > 100 ? 'danger' : 'neutral'}
               />
               <KPICard
                 label="Ganancia Neta"
                 value={`$${summary.totalProfit.toLocaleString()}`}
-                trend={summary.totalProfit >= 0 ? 'up' : 'down'}
-                trendValue={`${summary.averageProfitMargin.toFixed(1)}% margen`}
-                icon={<TrendingUp className="h-5 w-5" />}
+                trend={`${summary.averageProfitMargin.toFixed(1)}% margen`}
+                accent={summary.totalProfit >= 0 ? 'success' : 'danger'}
               />
               <KPICard
                 label="Proyectos Rentables"
                 value={`${summary.profitableProjects}/${projects.length}`}
-                trend={summary.lossProjects > 0 ? 'down' : 'stable'}
-                trendValue={summary.lossProjects > 0 ? `${summary.lossProjects} con pérdida` : 'Todos rentables'}
-                icon={<PieChart className="h-5 w-5" />}
+                subtitle={summary.lossProjects > 0 ? `${summary.lossProjects} con pérdida` : 'Todos rentables'}
+                accent={summary.lossProjects > 0 ? 'warning' : 'success'}
               />
             </div>
 
             {/* Budget vs Actual Chart */}
             <div className="grid grid-cols-2 gap-6 mb-6">
               <Card>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">
+                <h3 className="text-sm font-semibold text-redwood-text mb-4">
                   Comparativa Presupuesto vs Costo Real
                 </h3>
                 <div className="space-y-4">
@@ -216,15 +225,15 @@ export default function CostsDashboard() {
                     return (
                       <div key={project.id}>
                         <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-[var(--color-text-primary)] truncate flex-1">{project.name}</span>
-                          <span className={`text-xs ${overBudget ? 'text-red-600' : 'text-[var(--color-text-secondary)]'}`}>
+                          <span className="text-redwood-text truncate flex-1">{project.name}</span>
+                          <span className={`text-xs ${overBudget ? 'text-red-600' : 'text-redwood-muted'}`}>
                             ${project.actualCost.toLocaleString()} / ${project.budget.toLocaleString()}
                           </span>
                         </div>
-                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-2 bg-redwood-surface rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all ${
-                              overBudget ? 'bg-red-500' : 'bg-[var(--color-primary)]'
+                              overBudget ? 'bg-redwood-danger' : 'bg-redwood-primary'
                             }`}
                             style={{ width: `${percentage}%` }}
                           />
@@ -242,7 +251,7 @@ export default function CostsDashboard() {
               </Card>
 
               <Card>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">
+                <h3 className="text-sm font-semibold text-redwood-text mb-4">
                   Rentabilidad por Proyecto
                 </h3>
                 <div className="space-y-3">
@@ -254,17 +263,17 @@ export default function CostsDashboard() {
                       return (
                         <div 
                           key={project.id}
-                          className="flex items-center justify-between p-3 rounded-lg hover:bg-[var(--color-hover-row)] cursor-pointer transition-colors"
+                          className="flex items-center justify-between p-3 rounded-lg hover:bg-redwood-hover-bg cursor-pointer transition-colors"
                           onClick={() => setSelectedProject(project)}
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                              <span className="text-sm font-medium text-redwood-text truncate">
                                 {project.name}
                               </span>
                               <Badge severity={status.severity}>{status.label}</Badge>
                             </div>
-                            <span className="text-xs text-[var(--color-text-secondary)]">
+                            <span className="text-xs text-redwood-muted">
                               {project.client || 'Sin cliente'} · {project.billable ? 'Facturable' : 'Interno'}
                             </span>
                           </div>
@@ -272,7 +281,7 @@ export default function CostsDashboard() {
                             <div className={`text-sm font-semibold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {project.profit >= 0 ? '+' : ''}${project.profit.toLocaleString()}
                             </div>
-                            <div className="text-xs text-[var(--color-text-secondary)]">
+                            <div className="text-xs text-redwood-muted">
                               {project.profitMargin.toFixed(1)}% margen
                             </div>
                           </div>
@@ -287,38 +296,38 @@ export default function CostsDashboard() {
             <PermissionGate permission="resources:read">
               <Card className="mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  <h3 className="text-sm font-semibold text-redwood-text">
                     Costos por Recurso
                   </h3>
                   <Link href="/resources">
-                    <Button variant="ghost" size="compact">Ver todos</Button>
+                    <Button variant="subtle" size="compact">Ver todos</Button>
                   </Link>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-[var(--color-border-subtle)]">
-                        <th className="text-left py-2 text-xs font-medium text-[var(--color-text-secondary)]">Recurso</th>
-                        <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Tarifa/Hora</th>
-                        <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Horas Totales</th>
-                        <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Costo Total</th>
-                        <th className="text-left py-2 text-xs font-medium text-[var(--color-text-secondary)]">Proyectos</th>
+                      <tr className="border-b border-redwood-border">
+                        <th className="text-left py-2 text-xs font-medium text-redwood-muted">Recurso</th>
+                        <th className="text-right py-2 text-xs font-medium text-redwood-muted">Tarifa/Hora</th>
+                        <th className="text-right py-2 text-xs font-medium text-redwood-muted">Horas Totales</th>
+                        <th className="text-right py-2 text-xs font-medium text-redwood-muted">Costo Total</th>
+                        <th className="text-left py-2 text-xs font-medium text-redwood-muted">Proyectos</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--color-border-subtle)]">
+                    <tbody className="divide-y divide-redwood-border">
                       {resources.slice(0, 5).map(resource => (
-                        <tr key={resource.id} className="hover:bg-[var(--color-hover-row)]">
-                          <td className="py-3 text-sm text-[var(--color-text-primary)]">{resource.userName}</td>
-                          <td className="py-3 text-sm text-[var(--color-text-primary)] text-right">
+                        <tr key={resource.id} className="hover:bg-redwood-hover-bg">
+                          <td className="py-3 text-sm text-redwood-text">{resource.userName}</td>
+                          <td className="py-3 text-sm text-redwood-text text-right">
                             ${resource.hourlyRate}/h
                           </td>
-                          <td className="py-3 text-sm text-[var(--color-text-primary)] text-right">
+                          <td className="py-3 text-sm text-redwood-text text-right">
                             {resource.totalHours}h
                           </td>
-                          <td className="py-3 text-sm font-medium text-[var(--color-text-primary)] text-right">
+                          <td className="py-3 text-sm font-medium text-redwood-text text-right">
                             ${resource.totalCost.toLocaleString()}
                           </td>
-                          <td className="py-3 text-sm text-[var(--color-text-secondary)]">
+                          <td className="py-3 text-sm text-redwood-muted">
                             {resource.projects.slice(0, 2).join(', ')}
                             {resource.projects.length > 2 && ` +${resource.projects.length - 2}`}
                           </td>
@@ -332,45 +341,58 @@ export default function CostsDashboard() {
 
             {/* All Projects Table */}
             <Card>
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">
+              <h3 className="text-sm font-semibold text-redwood-text mb-4">
                 Todos los Proyectos - Detalle Financiero
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[var(--color-border-subtle)]">
-                      <th className="text-left py-2 text-xs font-medium text-[var(--color-text-secondary)]">Proyecto</th>
-                      <th className="text-left py-2 text-xs font-medium text-[var(--color-text-secondary)]">Cliente</th>
-                      <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Presupuesto</th>
-                      <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Costo Real</th>
-                      <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Ganancia</th>
-                      <th className="text-right py-2 text-xs font-medium text-[var(--color-text-secondary)]">Margen</th>
-                      <th className="text-center py-2 text-xs font-medium text-[var(--color-text-secondary)]">Estado</th>
+                    <tr className="border-b border-redwood-border">
+                      <th className="text-left py-2 text-xs font-medium text-redwood-muted">Proyecto</th>
+                      <th className="text-left py-2 text-xs font-medium text-redwood-muted">Cliente</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted">Presupuesto</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted">Costo Real</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted">Ganancia</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted">Margen</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted" title="Estimate At Completion">EAC</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted" title="Cost Performance Index">CPI</th>
+                      <th className="text-right py-2 text-xs font-medium text-redwood-muted" title="Schedule Performance Index">SPI</th>
+                      <th className="text-center py-2 text-xs font-medium text-redwood-muted">Estado</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[var(--color-border-subtle)]">
+                  <tbody className="divide-y divide-redwood-border">
                     {projects.map(project => {
                       const status = getProfitabilityStatus(project.profitMargin || 0);
+                      const { eac, cpi, spi } = calcMetrics(project);
                       return (
-                        <tr key={project.id} className="hover:bg-[var(--color-hover-row)]">
-                          <td className="py-3 text-sm font-medium text-[var(--color-text-primary)]">
+                        <tr key={project.id} className="hover:bg-redwood-hover-bg">
+                          <td className="py-3 text-sm font-medium text-redwood-text">
                             {project.name}
-                            <div className="text-xs text-[var(--color-text-secondary)]">{project.code}</div>
+                            <div className="text-xs text-redwood-muted">{project.code}</div>
                           </td>
-                          <td className="py-3 text-sm text-[var(--color-text-secondary)]">
+                          <td className="py-3 text-sm text-redwood-muted">
                             {project.client || '—'}
                           </td>
-                          <td className="py-3 text-sm text-[var(--color-text-primary)] text-right">
+                          <td className="py-3 text-sm text-redwood-text text-right">
                             ${project.budget.toLocaleString()}
                           </td>
-                          <td className="py-3 text-sm text-[var(--color-text-primary)] text-right">
+                          <td className="py-3 text-sm text-redwood-text text-right">
                             ${project.actualCost.toLocaleString()}
                           </td>
                           <td className={`py-3 text-sm font-medium text-right ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {project.profit >= 0 ? '+' : ''}${project.profit.toLocaleString()}
                           </td>
-                          <td className="py-3 text-sm text-[var(--color-text-primary)] text-right">
+                          <td className="py-3 text-sm text-redwood-text text-right">
                             {project.profitMargin.toFixed(1)}%
+                          </td>
+                          <td className="py-3 text-sm text-redwood-text text-right" title="Costo estimado al completar">
+                            ${eac.toLocaleString('es', { maximumFractionDigits: 0 })}
+                          </td>
+                          <td className={`py-3 text-sm font-medium text-right ${cpi >= 1 ? 'text-green-600' : 'text-red-600'}`} title="Índice de rendimiento de costo (>1 = bajo presupuesto)">
+                            {cpi.toFixed(2)}
+                          </td>
+                          <td className={`py-3 text-sm font-medium text-right ${spi >= 1 ? 'text-green-600' : 'text-amber-600'}`} title="Índice de rendimiento de cronograma (>1 = adelantado)">
+                            {spi.toFixed(2)}
                           </td>
                           <td className="py-3 text-center">
                             <Badge severity={status.severity}>{status.label}</Badge>
@@ -388,10 +410,10 @@ export default function CostsDashboard() {
         {!summary && (
           <div className="text-center py-12">
             <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-2">
+            <h3 className="text-lg font-medium text-redwood-text mb-2">
               No hay datos de costos disponibles
             </h3>
-            <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+            <p className="text-sm text-redwood-muted mb-4">
               Los proyectos necesitan tener configurados presupuestos y las horas registradas para calcular costos.
             </p>
             <PermissionGate permission="projects:update">
@@ -402,6 +424,68 @@ export default function CostsDashboard() {
           </div>
         )}
       </PageContent>
+
+      {/* Project detail modal */}
+      {selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-lg">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-base font-semibold text-redwood-text">{selectedProject.name}</h3>
+                <p className="text-sm text-redwood-muted">{selectedProject.code} · {selectedProject.client || 'Sin cliente'}</p>
+              </div>
+              <Button variant="subtle" size="icon" icon={<X className="h-4 w-4" />} onClick={() => setSelectedProject(null)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="p-3 rounded-lg bg-redwood-page">
+                <p className="text-xs text-redwood-muted mb-1">Presupuesto</p>
+                <p className="text-lg font-bold text-redwood-text">${selectedProject.budget.toLocaleString()}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-redwood-page">
+                <p className="text-xs text-redwood-muted mb-1">Costo Real</p>
+                <p className={`text-lg font-bold ${selectedProject.actualCost > selectedProject.budget ? 'text-redwood-danger' : 'text-redwood-text'}`}>
+                  ${selectedProject.actualCost.toLocaleString()}
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-redwood-page">
+                <p className="text-xs text-redwood-muted mb-1">Ganancia Neta</p>
+                <p className={`text-lg font-bold ${selectedProject.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {selectedProject.profit >= 0 ? '+' : ''}${selectedProject.profit.toLocaleString()}
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-redwood-page">
+                <p className="text-xs text-redwood-muted mb-1">Margen</p>
+                <p className={`text-lg font-bold ${selectedProject.profitMargin >= 15 ? 'text-green-600' : selectedProject.profitMargin >= 0 ? 'text-redwood-warning' : 'text-red-600'}`}>
+                  {selectedProject.profitMargin.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm text-redwood-muted">
+              <div className="flex justify-between">
+                <span>Horas presupuestadas</span>
+                <span className="font-medium text-redwood-text">{selectedProject.budgetHours}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Horas reales</span>
+                <span className="font-medium text-redwood-text">{selectedProject.actualHours}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tarifa/hora</span>
+                <span className="font-medium text-redwood-text">${selectedProject.hourlyRate}/h</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tipo</span>
+                <span className="font-medium text-redwood-text">{selectedProject.billable ? 'Facturable' : 'Interno'}</span>
+              </div>
+            </div>
+            <div className="flex justify-end mt-4">
+              <Link href="/projects">
+                <Button variant="subtle" size="compact">Ver en Proyectos</Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      )}
     </PageLayout>
   );
 }

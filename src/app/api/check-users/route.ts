@@ -1,46 +1,42 @@
 import { NextResponse } from 'next/server';
 import { getUsers, updateUser } from '@/lib/luma-docs';
 
+// Default passwords for seeded users (used only as fallback for users without one)
+const DEFAULT_PASSWORDS: Record<string, string> = {
+  'user_1': 'admin123',
+  'user_2': 'carlos123',
+  'user_3': 'maria123',
+  'user_4': 'pedro123',
+  'user_5': 'laura123',
+};
+
 export async function GET() {
   try {
     const users = await getUsers();
-    
-    // Check for users without password
-    const usersWithoutPassword = users.filter(u => !u.password);
-    
-    if (usersWithoutPassword.length > 0) {
-      console.log('Found users without password:', usersWithoutPassword.map(u => ({ id: u.id, email: u.email })));
-      
-      // Update users with default passwords
-      const defaultPasswords: Record<string, string> = {
-        'user_1': 'admin123',
-        'user_2': 'carlos123',
-        'user_3': 'maria123',
-        'user_4': 'pedro123',
-        'user_5': 'laura123',
-      };
-      
-      for (const user of usersWithoutPassword) {
-        const password = defaultPasswords[user.id] || 'password123';
-        await updateUser(user.id, { 
-          password, 
-          isActive: true 
-        });
-        console.log(`Updated user ${user.email} with password`);
+    const updated: string[] = [];
+
+    for (const user of users) {
+      if (!user.password) {
+        const password = DEFAULT_PASSWORDS[user.id] || 'password123';
+        // updateUser now auto-hashes the password
+        await updateUser(user.id, { password, isActive: true });
+        updated.push(user.email);
+        continue;
       }
-      
-      return NextResponse.json({ 
-        status: 'ok', 
-        message: `Updated ${usersWithoutPassword.length} users with passwords`,
-        users: usersWithoutPassword.map(u => ({ id: u.id, email: u.email }))
-      });
+
+      // Upgrade plaintext passwords to bcrypt
+      const isBcrypt = user.password.startsWith('$2b$') || user.password.startsWith('$2a$');
+      if (!isBcrypt) {
+        await updateUser(user.id, { password: user.password });
+        updated.push(user.email);
+      }
     }
-    
-    return NextResponse.json({ 
-      status: 'ok', 
-      message: 'All users have passwords',
+
+    return NextResponse.json({
+      status: 'ok',
+      message: updated.length > 0 ? `Upgraded ${updated.length} users` : 'All passwords already hashed',
+      upgraded: updated,
       userCount: users.length,
-      users: users.map(u => ({ id: u.id, email: u.email, hasPassword: !!u.password, isActive: u.isActive }))
     });
   } catch (error) {
     console.error('Error checking users:', error);

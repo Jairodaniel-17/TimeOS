@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   isAuthenticated: boolean;
   isAdmin: boolean;
 }
@@ -39,13 +39,14 @@ const loadUserFromStorage = (): User | null => {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
     setUser(loadUserFromStorage());
+    setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -86,9 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
     localStorage.removeItem('timeos_user');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore network errors on logout
+    }
     router.push('/login');
   };
 

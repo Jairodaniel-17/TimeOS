@@ -19,7 +19,13 @@ export type Permission =
   // Settings
   | 'settings:read' | 'settings:update'
   // Users
-  | 'users:read' | 'users:create' | 'users:update' | 'users:delete';
+  | 'users:read' | 'users:create' | 'users:update' | 'users:delete'
+  // Planning
+  | 'planning:read' | 'planning:create' | 'planning:update' | 'planning:delete'
+  // Costs
+  | 'costs:read' | 'costs:manage'
+  // Spreadsheet
+  | 'spreadsheet:read' | 'spreadsheet:write';
 
 const rolePermissions: Record<string, Permission[]> = {
   admin: [
@@ -31,6 +37,9 @@ const rolePermissions: Record<string, Permission[]> = {
     'approvals:read', 'approvals:manage',
     'settings:read', 'settings:update',
     'users:read', 'users:create', 'users:update', 'users:delete',
+    'planning:read', 'planning:create', 'planning:update', 'planning:delete',
+    'costs:read', 'costs:manage',
+    'spreadsheet:read', 'spreadsheet:write',
   ],
   manager: [
     'projects:read', 'projects:create', 'projects:update',
@@ -41,6 +50,9 @@ const rolePermissions: Record<string, Permission[]> = {
     'approvals:read', 'approvals:manage',
     'settings:read',
     'users:read', 'users:update',
+    'planning:read', 'planning:create', 'planning:update',
+    'costs:read',
+    'spreadsheet:read',
   ],
   member: [
     'projects:read',
@@ -49,6 +61,8 @@ const rolePermissions: Record<string, Permission[]> = {
     'resources:read',
     'reports:read',
     'settings:read',
+    'planning:read',
+    'spreadsheet:read',
   ],
 };
 

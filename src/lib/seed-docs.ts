@@ -23,6 +23,9 @@ const SEED_DATA = {
     { id: 'user_3', name: 'María Rodríguez', email: 'maria.rodriguez@timeos.com', role: 'member', password: 'maria123', isActive: true },
     { id: 'user_4', name: 'Pedro Sánchez', email: 'pedro.sanchez@timeos.com', role: 'member', password: 'pedro123', isActive: true },
     { id: 'user_5', name: 'Laura Martínez', email: 'laura.martinez@timeos.com', role: 'member', password: 'laura123', isActive: true },
+    { id: 'user_6', name: 'Andres Rejas', email: 'andres.rejas@orvanta.com', role: 'admin', password: 'andres123', isActive: true },
+    { id: 'user_7', name: 'Edson Alvarado', email: 'edson.alvarado@orvanta.com', role: 'admin', password: 'edson123', isActive: true },
+    { id: 'user_8', name: 'Jairo Mendoza', email: 'jairo.mendoza@orvanta.com', role: 'admin', password: 'jairo123', isActive: true },
   ],
   approvals: [
     { id: 'apr_1', userId: 'user_2', weekNumber: 8, year: 2026, totalHours: 42, status: 'pending' as const, submittedAt: Date.now() - 86400000 },

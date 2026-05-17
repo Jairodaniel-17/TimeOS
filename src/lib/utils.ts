@@ -23,3 +23,43 @@ export function getCurrentYear(): number {
 export function formatWeekDisplay(weekNumber: number, year: number): string {
   return `Semana ${weekNumber} del ${year}`;
 }
+
+/**
+ * Obtiene las fechas de inicio y fin de una semana específica
+ */
+export function getWeekDates(weekNumber: number, year: number): { 
+  start: string; 
+  end: string;
+  days: string[];
+} {
+  const simple = new Date(year, 0, 1 + (weekNumber - 1) * 7);
+  const dow = simple.getDay();
+  const weekStart = simple;
+  if (dow <= 4) {
+    weekStart.setDate(simple.getDate() - simple.getDay() + 1);
+  } else {
+    weekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  }
+  
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  
+  const formatDate = (d: Date) => {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}/${month}`;
+  };
+  
+  const days: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    days.push(String(d.getDate()).padStart(2, '0'));
+  }
+  
+  return {
+    start: formatDate(weekStart),
+    end: formatDate(weekEnd),
+    days,
+  };
+}

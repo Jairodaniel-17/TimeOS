@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getApprovals, createApproval, updateApproval, getUsers, getTimeEntries, updateTimeEntry } from '@/lib/luma-docs';
+import { getApprovals, createApproval, updateApproval, getUsers, getTimeEntries, updateTimeEntry, createNotification } from '@/lib/luma-docs';
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,11 +64,23 @@ export async function POST(request: Request) {
       submittedAt: now,
     });
 
-    // Update related time entries to 'pending' status
-    const entries = await getTimeEntries({ userId, weekNumber, year });
-    for (const entry of entries) {
-      await updateTimeEntry(entry.id, { status: 'pending' });
-    }
+    const [entries, managers] = await Promise.all([
+      getTimeEntries({ userId, weekNumber, year }),
+      getUsers(),
+    ]);
+    const managerIds = managers.filter(u => u.role === 'admin' || u.role === 'manager').map(u => u.id);
+
+    await Promise.all([
+      ...entries.map(e => updateTimeEntry(e.id, { status: 'pending' })),
+      ...managerIds.map(mid => createNotification({
+        id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        userId: mid,
+        type: 'approval_pending',
+        title: 'Timesheet pendiente de aprobación',
+        message: `Un timesheet de la semana ${weekNumber}/${year} ha sido enviado para revisión.`,
+        read: false,
+      })),
+    ]);
 
     return NextResponse.json({
       data: approval,
@@ -105,17 +117,36 @@ export async function PUT(request: Request) {
       );
     }
 
-    // If approved or rejected, update the time entries
-    if (status === 'approved' || status === 'rejected') {
+    if (status === 'approved' || status === 'rejected' || status === 'changes_requested') {
       const entries = await getTimeEntries({
         userId: approval.userId,
         weekNumber: approval.weekNumber,
         year: approval.year,
       });
-      
-      for (const entry of entries) {
-        await updateTimeEntry(entry.id, { status });
-      }
+
+      const notifTitle = status === 'approved'
+        ? 'Timesheet aprobado'
+        : status === 'rejected'
+        ? 'Timesheet rechazado'
+        : 'Se solicitaron cambios en tu timesheet';
+
+      const notifMessage = status === 'approved'
+        ? `Tu timesheet de la semana ${approval.weekNumber}/${approval.year} ha sido aprobado.`
+        : status === 'rejected'
+        ? `Tu timesheet de la semana ${approval.weekNumber}/${approval.year} fue rechazado. ${comments || ''}`
+        : `Se solicitaron cambios en tu timesheet de la semana ${approval.weekNumber}/${approval.year}. ${comments || ''}`;
+
+      await Promise.all([
+        ...(status !== 'changes_requested' ? entries.map(e => updateTimeEntry(e.id, { status: status === 'approved' ? 'approved' : 'rejected' })) : []),
+        createNotification({
+          id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          userId: approval.userId,
+          type: status === 'approved' ? 'approval_approved' : status === 'rejected' ? 'approval_rejected' : 'approval_changes',
+          title: notifTitle,
+          message: notifMessage,
+          read: false,
+        }),
+      ]);
     }
 
     return NextResponse.json({ success: true });

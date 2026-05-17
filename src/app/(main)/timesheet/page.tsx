@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button, Badge } from '@/components/ui';
-import { Send, Save, Copy, Upload, History } from 'lucide-react';
+import { 
+  Send, Save, Copy, Upload, History, Plus, Clock, 
+  DollarSign, Calendar, ChevronLeft, ChevronRight,
+  AlertCircle, Sparkles, Layers, Trash2
+} from 'lucide-react';
 import type { Project, TimeEntry } from '@/types';
-import { getWeekNumber, getCurrentYear } from '@/lib/utils';
+import { getWeekNumber, getCurrentYear, getWeekDates } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
 const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -18,16 +22,19 @@ export default function TimesheetPage() {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-  const [submitted, setSubmitted] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [animatingSave, setAnimatingSave] = useState(false);
+  const [animatingSubmit, setAnimatingSubmit] = useState(false);
   const { user } = useAuth();
 
-  const weekNumber = getWeekNumber();
+  const weekNumber = getWeekNumber() + weekOffset;
   const year = getCurrentYear();
+  const weekDates = useMemo(() => getWeekDates(weekNumber, year), [weekNumber, year]);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        // Members can only see their own timesheets
         const userIdParam = user ? `&userId=${user.id}` : '';
         const [entriesRes, projectsRes] = await Promise.all([
           fetch(`/api/timesheets?weekNumber=${weekNumber}&year=${year}${userIdParam}`),
@@ -37,21 +44,16 @@ export default function TimesheetPage() {
         const entriesData = await entriesRes.json();
         const projectsData = await projectsRes.json();
 
-        if (entriesData.success) {
-          setEntries(entriesData.data);
-        }
-        if (projectsData.success) {
-          setProjects(projectsData.data);
-        }
+        if (entriesData.success) setEntries(entriesData.data);
+        if (projectsData.success) setProjects(projectsData.data);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
     }
-
     fetchData();
-  }, [weekNumber, year]);
+  }, [weekNumber, year, user]);
 
   const handleCellChange = useCallback((entryId: string, day: typeof daysKey[number], value: number) => {
     setEntries(prev => prev.map(entry => {
@@ -66,7 +68,7 @@ export default function TimesheetPage() {
   const handleAddRow = () => {
     const newEntry: TimeEntry = {
       id: `new_${Date.now()}`,
-      userId: '1',
+      userId: user?.id || '1',
       projectId: '',
       activity: '',
       billable: true,
@@ -80,8 +82,54 @@ export default function TimesheetPage() {
     setHasChanges(true);
   };
 
+  const handleDeleteRow = (entryId: string) => {
+    setEntries(prev => prev.filter(e => e.id !== entryId));
+    setHasChanges(true);
+  };
+
+  const [copyingWeek, setCopyingWeek] = useState(false);
+  const handleCopyWeek = async () => {
+    if (!user) return;
+    setCopyingWeek(true);
+    try {
+      // Calculate previous week (handle year boundary)
+      let prevWeek = weekNumber - 1;
+      let prevYear = year;
+      if (prevWeek < 1) { prevWeek = 52; prevYear -= 1; }
+
+      const res = await fetch(`/api/timesheets?userId=${user.id}&weekNumber=${prevWeek}&year=${prevYear}`);
+      const data = await res.json();
+      if (!data.success || !data.data.length) {
+        alert('No hay entradas en la semana anterior para copiar.');
+        return;
+      }
+
+      const copies: TimeEntry[] = data.data.map((prev: TimeEntry) => ({
+        id: `new_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        userId: user.id,
+        projectId: prev.projectId,
+        activity: prev.activity,
+        billable: prev.billable,
+        weekNumber,
+        year,
+        hours: { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0, sat: 0, sun: 0 },
+        total: 0,
+        status: 'draft' as const,
+        project: prev.project,
+      }));
+
+      setEntries(prev => [...prev, ...copies]);
+      setHasChanges(true);
+    } catch (e) {
+      console.error('Error copying week:', e);
+    } finally {
+      setCopyingWeek(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
+    setAnimatingSave(true);
     try {
       for (const entry of entries) {
         if (entry.id.startsWith('new_')) {
@@ -112,11 +160,12 @@ export default function TimesheetPage() {
         }
       }
       setHasChanges(false);
-      window.location.reload();
+      setTimeout(() => window.location.reload(), 500);
     } catch (error) {
       console.error('Error saving:', error);
     } finally {
       setSaving(false);
+      setTimeout(() => setAnimatingSave(false), 500);
     }
   };
 
@@ -127,251 +176,441 @@ export default function TimesheetPage() {
     }
     
     const totalHours = entries.reduce((sum, e) => sum + e.total, 0);
+    if (totalHours === 0) {
+      alert('Debes registrar al menos algunas horas antes de enviar');
+      return;
+    }
     
+    setAnimatingSubmit(true);
     try {
       const res = await fetch('/api/approvals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          weekNumber,
-          year,
-          totalHours,
-        }),
+        body: JSON.stringify({ userId: user.id, weekNumber, year, totalHours }),
       });
 
       if (res.ok) {
-        setSubmitted(true);
-        setTimeout(() => {
-          window.location.reload();
-        }, 100);
+        setTimeout(() => window.location.reload(), 800);
       } else {
         alert('Error al enviar timesheet');
+        setAnimatingSubmit(false);
       }
     } catch (error) {
       console.error('Error submitting:', error);
       alert('Error al enviar timesheet');
+      setAnimatingSubmit(false);
     }
   };
 
   const totalHours = entries.reduce((sum, e) => sum + e.total, 0);
+  const totalBillable = entries.filter(e => e.billable).reduce((s, e) => s + e.total, 0);
   const hasErrors = entries.some(e => Object.values(e.hours).some(h => h > 12));
+  const maxDailyHours = Math.max(...entries.flatMap(e => Object.values(e.hours)), 0);
+
+  const getProgressColor = () => {
+    const targetHours = 40;
+    const percentage = (totalHours / targetHours) * 100;
+    if (percentage < 50) return 'from-red-400 to-red-600';
+    if (percentage < 80) return 'from-yellow-400 to-orange-500';
+    if (percentage <= 100) return 'from-emerald-400 to-teal-500';
+    return 'from-purple-500 to-pink-600';
+  };
 
   return (
     <PageLayout>
       <Header
-        title={`Timesheet - Semana ${weekNumber}`}
+        title="Mi Timesheet"
         breadcrumbs={[{ label: 'TimeOS' }, { label: 'Tiempos' }]}
         actions={
-          <>
-            <Button variant="primary" icon={<Send className="h-4 w-4" />} onClick={handleSubmit}>
-              Enviar para aprobación
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-redwood-page rounded-[14px] p-1">
+              <button
+                onClick={() => setWeekOffset(w => w - 1)}
+                className="p-2 hover:bg-redwood-hover-bg rounded-[10px] transition-all duration-200"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-4 text-sm font-medium min-w-[120px] text-center">
+                Semana {weekNumber}
+              </span>
+              <button
+                onClick={() => setWeekOffset(w => w + 1)}
+                className="p-2 hover:bg-redwood-hover-bg rounded-[10px] transition-all duration-200"
+                disabled={weekOffset >= 0}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <Button 
+              variant="primary" 
+              icon={<Send className={`h-4 w-4 ${animatingSubmit ? 'animate-pulse' : ''}`} />} 
+              onClick={handleSubmit}
+              disabled={animatingSubmit}
+              className={animatingSubmit ? 'bg-redwood-primary' : ''}
+            >
+              {animatingSubmit ? 'Enviando...' : 'Enviar'}
             </Button>
             <Button 
-              variant="secondary" 
-              icon={<Save className="h-4 w-4" />} 
+              variant="subtle" 
+              icon={<Save className={`h-4 w-4 ${animatingSave ? 'animate-bounce' : ''}`} />} 
               onClick={handleSave}
               loading={saving}
             >
-              {hasChanges ? 'Guardar*' : 'Guardar borrador'}
+              {hasChanges ? 'Guardar*' : 'Guardar'}
             </Button>
-            <Button variant="ghost" icon={<Copy className="h-4 w-4" />}>Duplicar semana</Button>
-            <Button variant="ghost" icon={<Upload className="h-4 w-4" />}>Importar</Button>
-            <Button variant="ghost" size="icon" icon={<History className="h-4 w-4" />} />
-          </>
+          </div>
         }
       />
 
-      {hasErrors && (
-        <div className="flex items-center gap-3 bg-[#FFF4E5] border-b border-[var(--color-warning)] px-4 py-2">
-          <span className="text-sm font-medium text-[var(--color-warning)]">
-            Tienes entradas con más de 12 horas en un día
-          </span>
-          <Button variant="ghost" size="compact">Resolver</Button>
-        </div>
-      )}
+      <PageContent className="p-0 overflow-hidden">
+        <div className="relative min-h-screen bg-redwood-page">
+          <div className="relative z-10 p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="group">
+                <div className="relative bg-redwood-surface backdrop-blur-xl border border-redwood-border rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-redwood-muted uppercase tracking-wider">Horas Totales</p>
+                      <p className="text-3xl font-bold text-redwood-text mt-1">
+                        {totalHours}h
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-redwood-surface rounded-xl flex items-center justify-center shadow-lg">
+                      <Clock className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="mt-3 h-1.5 bg-redwood-surface rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full bg-redwood-primary rounded-full transition-all duration-1000 ease-out`}
+                      style={{ width: `${Math.min((totalHours / 40) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
 
-      <PageContent className="p-0">
-        {loading ? (
-          <div className="flex items-center justify-center h-64 text-[var(--color-text-secondary)]">
-            Cargando...
-          </div>
-        ) : (
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] bg-white px-4 py-2">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)] bg-[var(--color-bg-page)] px-2 py-1 rounded">
-                fx
-              </span>
-              <input
-                type="text"
-                className="flex-1 text-sm bg-transparent border-0 focus:outline-none"
-                placeholder="Selecciona una celda para ver/editar fórmula"
-                readOnly
-              />
+              <div className="group">
+                <div className="relative bg-redwood-surface backdrop-blur-xl border border-redwood-border rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-redwood-muted uppercase tracking-wider">Horas Facturables</p>
+                      <p className="text-3xl font-bold text-redwood-text mt-1">
+                        {totalBillable}h
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-redwood-surface rounded-xl flex items-center justify-center shadow-lg">
+                      <DollarSign className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-redwood-muted mt-2">
+                    {totalHours > 0 ? Math.round((totalBillable / totalHours) * 100) : 0}% del total
+                  </p>
+                </div>
+              </div>
+
+              <div className="group">
+                <div className="relative bg-redwood-surface backdrop-blur-xl border border-redwood-border rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-redwood-muted uppercase tracking-wider">Entradas</p>
+                      <p className="text-3xl font-bold text-redwood-text mt-1">
+                        {entries.length}
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-redwood-surface rounded-xl flex items-center justify-center shadow-lg">
+                      <Layers className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-redwood-muted mt-2">
+                    {entries.filter(e => e.projectId).length} con proyecto
+                  </p>
+                </div>
+              </div>
+
+              <div className="group">
+                <div className="relative bg-redwood-surface backdrop-blur-xl border border-redwood-border rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-redwood-muted uppercase tracking-wider">Fechas</p>
+                      <p className="text-sm font-bold text-redwood-muted mt-1">
+                        {weekDates.start} - {weekDates.end}
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 bg-redwood-surface rounded-xl flex items-center justify-center shadow-lg">
+                      <Calendar className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-redwood-muted mt-2">{year}</p>
+                </div>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-auto bg-white">
-              <table className="w-full border-collapse">
-                <thead className="sticky top-0 z-10 bg-white shadow-[var(--shadow-elevation-low)]">
-                  <tr>
-                    <th className="w-10 border-b border-[var(--color-border-subtle)] px-3 py-2">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-[var(--color-border-subtle)]"
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedRows(new Set(entries.map(e => e.id)));
-                          } else {
-                            setSelectedRows(new Set());
-                          }
-                        }}
-                      />
-                    </th>
-                    <th className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-left text-xs font-medium uppercase text-[var(--color-text-secondary)] min-w-[180px]">
-                      Proyecto
-                    </th>
-                    <th className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-left text-xs font-medium uppercase text-[var(--color-text-secondary)] min-w-[150px]">
-                      Actividad
-                    </th>
-                    <th className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-center text-xs font-medium uppercase text-[var(--color-text-secondary)] w-16">
-                      Billable
-                    </th>
-                    {days.map((day) => (
-                      <th key={day} className="border-b border-[var(--color-border-subtle)] px-2 py-2 text-center text-xs font-medium uppercase text-[var(--color-text-secondary)] w-14">
-                        {day}
-                      </th>
-                    ))}
-                    <th className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-right text-xs font-medium uppercase text-[var(--color-text-secondary)] w-14">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr
-                      key={entry.id}
-                      className={`transition-colors duration-[var(--duration-instant)] ${
-                        selectedRows.has(entry.id) 
-                          ? 'bg-[var(--color-selected-row)] border-l-2 border-[var(--color-primary)]' 
-                          : 'hover:bg-[var(--color-hover-row)]'
-                      }`}
-                    >
-                      <td className="w-10 border-b border-[var(--color-border-subtle)] px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedRows.has(entry.id)}
-                          onChange={() => {
-                            const newSelected = new Set(selectedRows);
-                            if (newSelected.has(entry.id)) {
-                              newSelected.delete(entry.id);
-                            } else {
-                              newSelected.add(entry.id);
-                            }
-                            setSelectedRows(newSelected);
-                          }}
-                          className="h-4 w-4 rounded border-[var(--color-border-subtle)]"
-                        />
-                      </td>
-                      <td className="border-b border-[var(--color-border-subtle)] px-3 py-2">
-                        <select
-                          className="h-8 w-full border border-transparent bg-transparent text-sm focus:border-[var(--color-primary)] focus:outline-none rounded"
-                          value={entry.projectId}
-                          onChange={(e) => {
-                            setEntries(prev => prev.map(en => 
-                              en.id === entry.id ? { ...en, projectId: e.target.value } : en
-                            ));
-                            setHasChanges(true);
-                          }}
-                        >
-                          <option value="">Seleccionar...</option>
-                          {projects.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="border-b border-[var(--color-border-subtle)] px-3 py-2">
-                        <input
-                          type="text"
-                          className="h-8 w-full border border-transparent bg-transparent text-sm focus:border-[var(--color-primary)] focus:outline-none rounded px-2"
-                          value={entry.activity}
-                          onChange={(e) => {
-                            setEntries(prev => prev.map(en => 
-                              en.id === entry.id ? { ...en, activity: e.target.value } : en
-                            ));
-                            setHasChanges(true);
-                          }}
-                          placeholder="Actividad..."
-                        />
-                      </td>
-                      <td className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={entry.billable}
-                          onChange={() => {
-                            setEntries(prev => prev.map(en => 
-                              en.id === entry.id ? { ...en, billable: !en.billable } : en
-                            ));
-                            setHasChanges(true);
-                          }}
-                          className="h-4 w-4 rounded border-[var(--color-border-subtle)]"
-                        />
-                      </td>
-                      {daysKey.map((day) => {
-                        const value = entry.hours[day];
-                        const hasError = value > 12;
-                        return (
-                          <td key={day} className="border-b border-[var(--color-border-subtle)] px-1 py-2">
+            {hasErrors && (
+              <div className="relative overflow-hidden">
+                <div className="relative flex items-center gap-4 px-6 py-4 bg-redwood-surface backdrop-blur-xl border border-redwood-border rounded-xl shadow-lg">
+                  <div className="w-10 h-10 bg-badge-subtle-danger-bg rounded-full flex items-center justify-center animate-pulse">
+                    <AlertCircle className="h-5 w-5 text-redwood-danger" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-redwood-danger">Advertencia</p>
+                    <p className="text-sm text-redwood-danger">Tienes entradas con más de 12 horas en un día. Considera revisar tu registro.</p>
+                  </div>
+                  <Button variant="subtle" size="compact" className="text-redwood-danger hover:bg-badge-subtle-danger-bg">
+                    Resolver
+                  </Button>
+                </div>
+              </div>
+            )}
+
+              <div className="relative">
+                <div className="relative bg-redwood-surface backdrop-blur-xl border border-redwood-border rounded-2xl shadow-2xl overflow-hidden">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-redwood-border">
+                  <Sparkles className="h-5 w-5 text-redwood-primary animate-pulse" />
+                  <span className="text-sm font-medium text-redwood-muted">Registro de Horas</span>
+                  {hasChanges && (
+                    <span className="px-2 py-0.5 text-xs bg-badge-subtle-warning-bg text-redwood-warning rounded-full animate-pulse">
+                      Sin guardar
+                    </span>
+                  )}
+                </div>
+
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-10 h-10 border-4 border-redwood-border border-t-redwood-primary rounded-full animate-spin" />
+                      <p className="text-sm text-redwood-muted">Cargando timesheet...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-redwood-surface/80">
+                          <th className="w-12 px-4 py-3">
                             <input
-                              type="number"
-                              className={`w-full h-8 text-center text-sm border border-transparent bg-transparent focus:border-[var(--color-primary)] focus:outline-none rounded ${
-                                hasError ? 'text-[var(--color-error)] font-medium' : ''
-                              }`}
-                              value={value || ''}
-                              onChange={(e) => handleCellChange(entry.id, day, parseFloat(e.target.value) || 0)}
-                              min={0}
-                              max={24}
-                              step={0.5}
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-redwood-border text-redwood-primary focus:ring-redwood-focus-ring"
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedRows(new Set(entries.map(e => e.id)));
+                                } else {
+                                  setSelectedRows(new Set());
+                                }
+                              }}
                             />
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-redwood-muted uppercase tracking-wider min-w-[200px]">
+                            Proyecto
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-redwood-muted uppercase tracking-wider min-w-[180px]">
+                            Actividad
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-redwood-muted uppercase tracking-wider w-20">
+                            Billable
+                          </th>
+                          {days.map((day, i) => (
+                            <th key={day} className="px-2 py-3 text-center text-xs font-semibold text-redwood-muted uppercase tracking-wider w-16">
+                              <div className="flex flex-col">
+                                <span>{day}</span>
+                                <span className="text-[10px] text-redwood-muted font-normal">
+                                  {weekDates.days[i]}
+                                </span>
+                              </div>
+                            </th>
+                          ))}
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-redwood-muted uppercase tracking-wider w-20">
+                            Total
+                          </th>
+                          <th className="w-12"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-redwood-border">
+                        {entries.map((entry, idx) => (
+                          <tr
+                            key={entry.id}
+                            className={`group transition-all duration-300 hover:bg-redwood-hover-bg ${
+                              selectedRows.has(entry.id)
+                                ? 'bg-redwood-selected-bg border-l-4 border-l-redwood-primary'
+                                : ''
+                            } ${hoveredRow === entry.id ? 'bg-redwood-hover-bg' : ''}`}
+                            onMouseEnter={() => setHoveredRow(entry.id)}
+                            onMouseLeave={() => setHoveredRow(null)}
+                          >
+                            <td className="px-4 py-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedRows.has(entry.id)}
+                                onChange={() => {
+                                  const newSelected = new Set(selectedRows);
+                                  if (newSelected.has(entry.id)) {
+                                    newSelected.delete(entry.id);
+                                  } else {
+                                    newSelected.add(entry.id);
+                                  }
+                                  setSelectedRows(newSelected);
+                                }}
+                                className="h-4 w-4 rounded border-redwood-border text-redwood-primary focus:ring-redwood-focus-ring"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <select
+                                className="w-full h-9 px-3 bg-redwood-surface/50 border border-redwood-border rounded-lg text-sm focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
+                                value={entry.projectId}
+                                onChange={(e) => {
+                                  setEntries(prev => prev.map(en => 
+                                    en.id === entry.id ? { ...en, projectId: e.target.value } : en
+                                  ));
+                                  setHasChanges(true);
+                                }}
+                              >
+                                <option value="">Seleccionar proyecto...</option>
+                                {projects.filter(p => p.status === 'active').map(p => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                className="w-full h-9 px-3 bg-redwood-surface/50 border border-redwood-border rounded-lg text-sm focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
+                                value={entry.activity}
+                                onChange={(e) => {
+                                  setEntries(prev => prev.map(en => 
+                                    en.id === entry.id ? { ...en, activity: e.target.value } : en
+                                  ));
+                                  setHasChanges(true);
+                                }}
+                                placeholder="¿En qué trabajaste?"
+                              />
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => {
+                                  setEntries(prev => prev.map(en => 
+                                    en.id === entry.id ? { ...en, billable: !en.billable } : en
+                                  ));
+                                  setHasChanges(true);
+                                }}
+                                className={`w-10 h-6 rounded-full transition-all duration-300 ${
+                                  entry.billable 
+                                    ? 'bg-redwood-primary' 
+                                    : 'bg-redwood-surface'
+                                }`}
+                              >
+                                <div className={`w-5 h-5 bg-redwood-surface rounded-full shadow-md transform transition-transform duration-300 ${
+                                  entry.billable ? 'translate-x-4' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+                            </td>
+                            {daysKey.map((day) => {
+                              const value = entry.hours[day];
+                              const hasError = value > 12;
+                              const isWeekend = day === 'sat' || day === 'sun';
+                              return (
+                                <td key={day} className="px-1 py-2">
+                                  <input
+                                    type="number"
+                                    className={`w-full h-9 text-center text-sm font-medium border-0 bg-redwood-surface/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all ${
+                                      hasError
+                                        ? 'text-redwood-danger bg-badge-subtle-danger-bg ring-2 ring-redwood-danger/30'
+                                        : isWeekend 
+                                        ? 'text-redwood-muted bg-redwood-surface/50' 
+                                        : 'text-redwood-muted'
+                                    }`}
+                                    value={value || ''}
+                                    onChange={(e) => handleCellChange(entry.id, day, parseFloat(e.target.value) || 0)}
+                                    min={0}
+                                    max={24}
+                                    step={0.5}
+                                  />
+                                </td>
+                              );
+                            })}
+                            <td className="px-4 py-3 text-right">
+                              <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
+                                entry.total > 0 
+                                  ? 'bg-badge-subtle-info-bg text-redwood-primary'
+                                  : 'text-redwood-muted'
+                              }`}>
+                                {entry.total}h
+                              </span>
+                            </td>
+                            <td className="px-2 py-3">
+                              <button
+                                onClick={() => handleDeleteRow(entry.id)}
+                                className="p-2 text-redwood-muted hover:text-redwood-danger hover:bg-badge-subtle-danger-bg rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        
+                        <tr 
+                          className="hover:bg-redwood-hover-bg cursor-pointer group transition-all duration-200"
+                          onClick={handleAddRow}
+                        >
+                          <td colSpan={12} className="px-4 py-4">
+                            <div className="flex items-center justify-center gap-2 text-redwood-muted group-hover:text-redwood-primary transition-colors">
+                              <Plus className="h-5 w-5" />
+                              <span className="text-sm font-medium">Agregar nueva entrada</span>
+                            </div>
                           </td>
-                        );
-                      })}
-                      <td className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-right font-medium">
-                        {entry.total}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr 
-                    className="hover:bg-[var(--color-bg-page)] cursor-pointer"
-                    onClick={handleAddRow}
-                  >
-                    <td 
-                      colSpan={13}
-                      className="border-b border-[var(--color-border-subtle)] px-3 py-2 text-sm text-[var(--color-text-secondary)]"
-                    >
-                      + Agregar nueva fila
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between px-6 py-4 border-t border-redwood-border bg-redwood-surface-soft">
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-redwood-muted">Total semana:</span>
+                      <span className="text-xl font-bold text-redwood-primary">
+                        {totalHours}h
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-redwood-muted">Promedio/día:</span>
+                      <span className="text-sm font-semibold text-redwood-muted">
+                        {(totalHours / 7).toFixed(1)}h
+                      </span>
+                    </div>
+                    {maxDailyHours > 8 && (
+                      <div className="flex items-center gap-2 px-3 py-1 bg-badge-subtle-warning-bg text-redwood-warning rounded-full">
+                        <AlertCircle className="h-3 w-3" />
+                        <span className="text-xs font-medium">Día más largo: {maxDailyHours}h</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge status="draft">
+                      {hasChanges ? 'Borrador (sin guardar)' : 'Borrador'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-white px-4 py-2">
-              <div className="flex items-center gap-4 text-sm">
-                <span className="text-[var(--color-text-secondary)]">
-                  Total: <span className="font-semibold text-[var(--color-text-primary)]">{totalHours}h</span>
-                </span>
-                <span className="text-[var(--color-text-secondary)]">
-                  Billable: <span className="font-semibold text-[var(--color-text-primary)]">
-                    {entries.filter(e => e.billable).reduce((s, e) => s + e.total, 0)}h
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge status="draft">Borrador</Badge>
-              </div>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={handleCopyWeek}
+                disabled={copyingWeek}
+                className="flex items-center gap-2 px-4 py-2 bg-redwood-surface/60 backdrop-blur-lg border border-redwood-border/40 rounded-xl text-sm font-medium text-redwood-muted hover:bg-redwood-surface/80 hover:text-redwood-primary transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Copy className="h-4 w-4" />
+                {copyingWeek ? 'Copiando...' : 'Duplicar semana'}
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 bg-redwood-surface/60 backdrop-blur-lg border border-redwood-border/40 rounded-xl text-sm font-medium text-redwood-muted hover:bg-redwood-surface/80 hover:text-redwood-primary transition-all duration-200 hover:shadow-lg">
+                <Upload className="h-4 w-4" />
+                Importar
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 bg-redwood-surface/60 backdrop-blur-lg border border-redwood-border/40 rounded-xl text-sm font-medium text-redwood-muted hover:bg-redwood-surface/80 hover:text-redwood-primary transition-all duration-200 hover:shadow-lg">
+                <History className="h-4 w-4" />
+                Historial
+              </button>
             </div>
           </div>
-        )}
+        </div>
       </PageContent>
     </PageLayout>
   );

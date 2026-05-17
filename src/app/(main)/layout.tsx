@@ -2,20 +2,22 @@
 
 import { Sidebar } from '@/components/layout/Sidebar';
 import { SidebarProvider, useSidebar } from '@/contexts/SidebarContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { clsx } from 'clsx';
 
 function MainLayoutContent({ children }: { children: React.ReactNode }) {
   const { isCollapsed } = useSidebar();
-  
+
   return (
-    <div className="flex h-screen bg-[var(--color-bg-page)]">
+    <div className="flex h-screen bg-[var(--bg-base)] overflow-hidden">
       <Sidebar />
-      <main 
+      <main
         className={clsx(
-          'flex-1 overflow-hidden transition-all duration-300',
+          'flex-1 flex flex-col overflow-hidden transition-all duration-300',
           isCollapsed ? 'ml-16' : 'ml-60'
         )}
       >
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </div>
   );
@@ -28,5 +30,3 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     </SidebarProvider>
   );
 }
-
-import { clsx } from 'clsx';

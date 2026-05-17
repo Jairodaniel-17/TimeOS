@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntry, getProjects, type TimeEntryDoc } from '@/lib/luma-docs';
+import { timeEntrySchema } from '@/lib/validation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,7 +8,9 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const weekNumber = searchParams.get('weekNumber');
     const year = searchParams.get('year');
-    const limit = parseInt(searchParams.get('limit') || '100');
+    const limit = parseInt(searchParams.get('limit') || '0');
+    const page = parseInt(searchParams.get('page') || '0');
+    const pageSize = parseInt(searchParams.get('pageSize') || '0');
 
     const filter: { userId?: string; weekNumber?: number; year?: number } = {};
     if (userId) filter.userId = userId;
@@ -20,10 +23,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     const projectMap = new Map(projects.map(p => [p.id, p]));
-    const limitedEntries = entries.slice(0, limit);
+    const total = entries.length;
+    let sliced = entries;
+    if (page > 0 && pageSize > 0) sliced = entries.slice((page - 1) * pageSize, page * pageSize);
+    else if (limit > 0) sliced = entries.slice(0, limit);
 
     return NextResponse.json({
-      data: limitedEntries.map(e => ({
+      data: sliced.map(e => ({
         id: e.id,
         userId: e.userId,
         projectId: e.projectId,
@@ -37,6 +43,7 @@ export async function GET(request: NextRequest) {
         status: e.status,
         project: projectMap.get(e.projectId) || null,
       })),
+      ...(page > 0 && pageSize > 0 ? { pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } } : {}),
       success: true,
     });
   } catch (error) {
@@ -51,38 +58,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const {
-      userId,
-      projectId,
-      activity,
-      notes,
-      billable = true,
-      weekNumber,
-      year,
-      hours = { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0, sat: 0, sun: 0 },
-    } = body;
+    const parsed = timeEntrySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '), success: false },
+        { status: 400 }
+      );
+    }
 
+    const { hours, ...rest } = parsed.data;
     const id = `te_${Date.now()}`;
-    const total = Object.values(hours as Record<string, number>).reduce((a, b) => a + b, 0);
+    const total = Object.values(hours).reduce((a, b) => a + b, 0);
 
     const entry = await createTimeEntry({
       id,
-      userId,
-      projectId,
-      activity,
-      notes,
-      billable,
-      weekNumber,
-      year,
+      ...rest,
       hours,
       total,
       status: 'draft',
     });
 
-    return NextResponse.json({
-      data: entry,
-      success: true,
-    });
+    return NextResponse.json({ data: entry, success: true });
   } catch (error) {
     console.error('Error creating time entry:', error);
     return NextResponse.json(

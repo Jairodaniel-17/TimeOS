@@ -1,0 +1,60 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyToken } from '@/lib/auth';
+
+// Routes that don't require authentication
+const PUBLIC_API_ROUTES = [
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/init',
+  '/api/check-users',
+];
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (!pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  if (PUBLIC_API_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+    return NextResponse.next();
+  }
+
+  const token =
+    request.cookies.get('timeos_session')?.value ||
+    request.headers.get('Authorization')?.replace('Bearer ', '');
+
+  if (!token) {
+    return NextResponse.json(
+      { error: 'Unauthorized', success: false },
+      { status: 401 }
+    );
+  }
+
+  const payload = await verifyToken(token);
+  if (!payload) {
+    return NextResponse.json(
+      { error: 'Session expired. Please log in again.', success: false },
+      { status: 401 }
+    );
+  }
+
+  // Protect destructive admin-only routes
+  if (pathname.startsWith('/api/reset') && payload.role !== 'admin') {
+    return NextResponse.json(
+      { error: 'Forbidden: admin access required', success: false },
+      { status: 403 }
+    );
+  }
+
+  // Forward user identity in request headers for API handlers
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-user-id', payload.id);
+  requestHeaders.set('x-user-role', payload.role);
+
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
+export const config = {
+  matcher: '/api/:path*',
+};

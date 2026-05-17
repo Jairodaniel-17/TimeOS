@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { PermissionGate } from '@/hooks/usePermissions';
 import type { Task, Project, User } from '@/types';
+import { PROJECT_PHASES } from '@/types';
 
 interface TaskWithHierarchy extends Task {
   estimatedHours: number;
@@ -35,22 +36,22 @@ interface TaskWithHierarchy extends Task {
 }
 
 const STATUS_COLORS = {
-  todo: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Por hacer' },
-  in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'En progreso' },
-  done: { bg: 'bg-green-100', text: 'text-green-700', label: 'Completado' },
+  todo: { bg: 'bg-redwood-surface', text: 'text-redwood-muted', label: 'Por hacer' },
+  in_progress: { bg: 'bg-badge-subtle-info-bg', text: 'text-redwood-text', label: 'En progreso' },
+  done: { bg: 'bg-badge-subtle-success-bg', text: 'text-redwood-text', label: 'Completado' },
 };
 
 const PRIORITY_COLORS = {
-  low: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Baja' },
-  medium: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Media' },
-  high: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta' },
+  low: { bg: 'bg-redwood-surface', text: 'text-redwood-muted', label: 'Baja' },
+  medium: { bg: 'bg-badge-subtle-warning-bg', text: 'text-redwood-text', label: 'Media' },
+  high: { bg: 'bg-badge-subtle-danger-bg', text: 'text-redwood-text', label: 'Alta' },
 };
 
 const TIME_STATUS_COLORS = {
-  on_track: { color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, label: 'En tiempo' },
-  over_budget: { color: 'text-red-600', bg: 'bg-red-50', icon: AlertTriangle, label: 'Sobrepasado' },
-  under_budget: { color: 'text-blue-600', bg: 'bg-blue-50', icon: Clock, label: 'Por debajo' },
-  not_started: { color: 'text-gray-500', bg: 'bg-gray-50', icon: Pause, label: 'Sin iniciar' },
+  on_track: { color: 'text-redwood-green', bg: 'bg-badge-subtle-success-bg', icon: CheckCircle, label: 'En tiempo' },
+  over_budget: { color: 'text-redwood-danger', bg: 'bg-badge-subtle-danger-bg', icon: AlertTriangle, label: 'Sobrepasado' },
+  under_budget: { color: 'text-redwood-primary', bg: 'bg-badge-subtle-info-bg', icon: Clock, label: 'Por debajo' },
+  not_started: { color: 'text-redwood-muted', bg: 'bg-redwood-surface', icon: Pause, label: 'Sin iniciar' },
 };
 
 export default function TasksAdminPage() {
@@ -70,6 +71,7 @@ export default function TasksAdminPage() {
     description: '',
     projectId: '',
     parentId: '',
+    phaseId: '',
     assigneeId: '',
     estimatedHours: 0,
     startDate: '',
@@ -154,6 +156,7 @@ export default function TasksAdminPage() {
         body: JSON.stringify({
           ...newTask,
           parentId: newTask.parentId || undefined,
+          phaseId: newTask.phaseId || undefined,
           assigneeId: newTask.assigneeId || undefined,
           startDate: newTask.startDate || new Date().toISOString().split('T')[0],
           endDate: newTask.endDate || new Date().toISOString().split('T')[0],
@@ -168,6 +171,7 @@ export default function TasksAdminPage() {
           description: '',
           projectId: '',
           parentId: '',
+          phaseId: '',
           assigneeId: '',
           estimatedHours: 0,
           startDate: '',
@@ -272,9 +276,9 @@ export default function TasksAdminPage() {
   };
 
   const getVarianceColor = (variance: number) => {
-    if (variance > 0) return 'text-red-600';
-    if (variance < 0) return 'text-blue-600';
-    return 'text-green-600';
+    if (variance > 0) return 'text-redwood-danger';
+    if (variance < 0) return 'text-redwood-primary';
+    return 'text-redwood-green';
   };
 
   const getVarianceIcon = (timeStatus: string) => {
@@ -291,10 +295,16 @@ export default function TasksAdminPage() {
           title="Gestión de Tasks"
           breadcrumbs={[{ label: 'TimeOS' }, { label: 'Tasks' }]}
         />
-        <PageContent className="flex items-center justify-center">
-          <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Cargando...</span>
+        <PageContent>
+          <div className="flex gap-3 mb-4">
+            <div className="h-9 w-48 rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+            <div className="h-9 w-36 rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+            <div className="h-9 w-24 rounded-[14px] animate-pulse bg-redwood-solid-bg ml-auto" />
+          </div>
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-12 rounded-[14px] animate-pulse bg-redwood-solid-bg" style={{ opacity: 1 - i * 0.08 }} />
+            ))}
           </div>
         </PageContent>
       </PageLayout>
@@ -313,7 +323,7 @@ export default function TasksAdminPage() {
                 Nueva Task
               </Button>
             </PermissionGate>
-            <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={handleExport}>
+            <Button variant="subtle" icon={<Download className="h-4 w-4" />} onClick={handleExport}>
               Exportar Excel
             </Button>
           </>
@@ -321,11 +331,11 @@ export default function TasksAdminPage() {
       />
       <PageContent className="p-0">
         {/* Filters */}
-        <div className="flex items-center gap-4 p-4 border-b border-[var(--color-border-subtle)] bg-white">
+        <div className="flex items-center gap-4 p-4 border-b border-redwood-border bg-redwood-surface">
           <div className="flex items-center gap-2">
-            <FolderTree className="h-4 w-4 text-gray-500" />
+            <FolderTree className="h-4 w-4 text-redwood-muted" />
             <select
-              className="border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2 text-sm"
+              className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
             >
@@ -336,9 +346,9 @@ export default function TasksAdminPage() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-500" />
+            <Filter className="h-4 w-4 text-redwood-muted" />
             <select
-              className="border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2 text-sm"
+              className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
             >
@@ -348,7 +358,7 @@ export default function TasksAdminPage() {
               <option value="done">Completado</option>
             </select>
           </div>
-          <div className="flex items-center gap-2 ml-auto text-sm text-gray-600">
+          <div className="flex items-center gap-2 ml-auto text-sm text-redwood-muted">
             <span>Total: <strong>{filteredTasks.length}</strong> tasks</span>
           </div>
         </div>
@@ -356,8 +366,8 @@ export default function TasksAdminPage() {
         {/* Excel-like Grid */}
         <div className="overflow-auto">
           <table className="w-full">
-            <thead className="bg-[var(--color-bg-page)] sticky top-0 z-10">
-              <tr className="text-left text-xs font-medium text-[var(--color-text-secondary)] border-b border-[var(--color-border-subtle)]">
+            <thead className="bg-redwood-page sticky top-0 z-10">
+              <tr className="text-left text-xs font-medium text-redwood-muted border-b border-redwood-border">
                 <th className="px-4 py-3 w-8"></th>
                 <th className="px-4 py-3 min-w-[300px]">Tarea</th>
                 <th className="px-4 py-3 min-w-[120px]">Proyecto</th>
@@ -373,19 +383,19 @@ export default function TasksAdminPage() {
                 <th className="px-4 py-3 text-center w-32">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--color-border-subtle)]">
+            <tbody className="divide-y divide-redwood-border">
               {filteredTasks.map((task) => (
-                <tr 
-                  key={task.id} 
-                  className={`text-sm hover:bg-[var(--color-hover-row)] ${
-                    task.level && task.level > 0 ? 'bg-gray-50/50' : ''
+                <tr
+                  key={task.id}
+                  className={`text-sm hover:bg-redwood-hover-bg ${
+                    task.level && task.level > 0 ? 'bg-redwood-surface/50' : ''
                   }`}
                 >
                   <td className="px-4 py-3">
                     {task.hasSubtasks && (
                       <button
                         onClick={() => toggleExpand(task.id)}
-                        className="text-gray-500 hover:text-gray-700"
+                        className="text-redwood-muted hover:text-redwood-muted"
                       >
                         {expandedTasks.has(task.id) ? (
                           <ChevronDown className="h-4 w-4" />
@@ -399,36 +409,36 @@ export default function TasksAdminPage() {
                     <div className="flex items-center gap-2">
                       <span style={{ marginLeft: `${(task.level || 0) * 20}px` }}>
                         {task.hasSubtasks && (
-                          <span className="text-xs text-gray-400 mr-1">({task.subtaskCount})</span>
+                          <span className="text-xs text-redwood-muted mr-1">({task.subtaskCount})</span>
                         )}
                       </span>
                       <span className="font-medium">{task.name}</span>
                     </div>
                     {task.description && (
-                      <div className="text-xs text-gray-500 mt-1 ml-4">{task.description}</div>
+                      <div className="text-xs text-redwood-muted mt-1 ml-4">{task.description}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{task.project?.name}</td>
+                  <td className="px-4 py-3 text-redwood-muted">{task.project?.name}</td>
                   <td className="px-4 py-3">
                     {task.assignee ? (
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-[var(--color-primary-light)] flex items-center justify-center text-xs font-medium text-[var(--color-primary)]">
+                        <div className="w-6 h-6 rounded-full bg-[var(--color-primary-light)] flex items-center justify-center text-xs font-medium text-redwood-primary">
                           {task.assignee.name.charAt(0)}
                         </div>
                         <span>{task.assignee.name}</span>
                       </div>
                     ) : (
-                      <span className="text-gray-400 italic">Sin asignar</span>
+                      <span className="text-redwood-muted italic">Sin asignar</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-medium">{task.estimatedHours}h</td>
                   <td className="px-4 py-3 text-right">
-                    <span className={task.actualHours > task.estimatedHours ? 'text-red-600 font-medium' : ''}>
+                    <span className={task.actualHours > task.estimatedHours ? 'text-redwood-danger font-medium' : ''}>
                       {task.actualHours}h
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-green-600">{task.remainingHours}h</td>
-                  <td className="px-4 py-3 text-right text-red-600">{task.overHours}h</td>
+                  <td className="px-4 py-3 text-right text-redwood-green">{task.remainingHours}h</td>
+                  <td className="px-4 py-3 text-right text-redwood-danger">{task.overHours}h</td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {getVarianceIcon(task.timeStatus)}
@@ -439,13 +449,13 @@ export default function TasksAdminPage() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="flex-1 h-2 bg-redwood-solid-bg rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-all bg-[var(--color-primary)]"
+                          className="h-full rounded-full transition-all bg-redwood-primary"
                           style={{ width: `${task.progress}%` }}
                         />
                       </div>
-                      <span className="text-xs text-gray-600 w-8">{task.progress}%</span>
+                      <span className="text-xs text-redwood-muted w-8">{task.progress}%</span>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -462,24 +472,24 @@ export default function TasksAdminPage() {
                     <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => { setSelectedTask(task); setShowTimeEntryModal(true); }}
-                        className="p-1 hover:bg-gray-100 rounded"
+                        className="p-1 hover:bg-redwood-surface rounded"
                         title="Agregar horas"
                       >
-                        <Clock className="h-4 w-4 text-blue-600" />
+                        <Clock className="h-4 w-4 text-redwood-primary" />
                       </button>
                       <button
                         onClick={() => setEditingTask(task)}
-                        className="p-1 hover:bg-gray-100 rounded"
+                        className="p-1 hover:bg-redwood-surface rounded"
                         title="Editar"
                       >
-                        <Edit2 className="h-4 w-4 text-gray-600" />
+                        <Edit2 className="h-4 w-4 text-redwood-muted" />
                       </button>
                       <button
                         onClick={() => handleDeleteTask(task.id)}
-                        className="p-1 hover:bg-gray-100 rounded"
+                        className="p-1 hover:bg-redwood-surface rounded"
                         title="Eliminar"
                       >
-                        <Trash2 className="h-4 w-4 text-red-600" />
+                        <Trash2 className="h-4 w-4 text-redwood-danger" />
                       </button>
                     </div>
                   </td>
@@ -490,37 +500,37 @@ export default function TasksAdminPage() {
         </div>
 
         {/* Summary */}
-        <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-page)] p-4">
+        <div className="border-t border-redwood-border bg-redwood-page p-4">
           <div className="grid grid-cols-6 gap-4 text-sm">
-            <div className="bg-white p-3 rounded-lg border border-[var(--color-border-subtle)]">
-              <div className="text-gray-500 text-xs">Total Estimado</div>
+            <div className="bg-redwood-surface p-3 rounded-[10px] border border-redwood-border">
+              <div className="text-redwood-muted text-xs">Total Estimado</div>
               <div className="text-lg font-bold">{filteredTasks.reduce((sum, t) => sum + t.estimatedHours, 0)}h</div>
             </div>
-            <div className="bg-white p-3 rounded-lg border border-[var(--color-border-subtle)]">
-              <div className="text-gray-500 text-xs">Total Real</div>
-              <div className="text-lg font-bold text-blue-600">{filteredTasks.reduce((sum, t) => sum + t.actualHours, 0)}h</div>
+            <div className="bg-redwood-surface p-3 rounded-[10px] border border-redwood-border">
+              <div className="text-redwood-muted text-xs">Total Real</div>
+              <div className="text-lg font-bold text-redwood-primary">{filteredTasks.reduce((sum, t) => sum + t.actualHours, 0)}h</div>
             </div>
-            <div className="bg-white p-3 rounded-lg border border-[var(--color-border-subtle)]">
-              <div className="text-gray-500 text-xs">Varianza</div>
-              <div className={`text-lg font-bold ${filteredTasks.reduce((sum, t) => sum + t.variance, 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            <div className="bg-redwood-surface p-3 rounded-[10px] border border-redwood-border">
+              <div className="text-redwood-muted text-xs">Varianza</div>
+              <div className={`text-lg font-bold ${filteredTasks.reduce((sum, t) => sum + t.variance, 0) > 0 ? 'text-redwood-danger' : 'text-redwood-green'}`}>
                 {filteredTasks.reduce((sum, t) => sum + t.variance, 0) > 0 ? '+' : ''}{filteredTasks.reduce((sum, t) => sum + t.variance, 0)}h
               </div>
             </div>
-            <div className="bg-white p-3 rounded-lg border border-[var(--color-border-subtle)]">
-              <div className="text-gray-500 text-xs">En tiempo</div>
-              <div className="text-lg font-bold text-green-600">
+            <div className="bg-redwood-surface p-3 rounded-[10px] border border-redwood-border">
+              <div className="text-redwood-muted text-xs">En tiempo</div>
+              <div className="text-lg font-bold text-redwood-green">
                 {filteredTasks.filter(t => t.timeStatus === 'on_track').length}
               </div>
             </div>
-            <div className="bg-white p-3 rounded-lg border border-[var(--color-border-subtle)]">
-              <div className="text-gray-500 text-xs">Sobrepasados</div>
-              <div className="text-lg font-bold text-red-600">
+            <div className="bg-redwood-surface p-3 rounded-[10px] border border-redwood-border">
+              <div className="text-redwood-muted text-xs">Sobrepasados</div>
+              <div className="text-lg font-bold text-redwood-danger">
                 {filteredTasks.filter(t => t.timeStatus === 'over_budget').length}
               </div>
             </div>
-            <div className="bg-white p-3 rounded-lg border border-[var(--color-border-subtle)]">
-              <div className="text-gray-500 text-xs">Completados</div>
-              <div className="text-lg font-bold text-gray-600">
+            <div className="bg-redwood-surface p-3 rounded-[10px] border border-redwood-border">
+              <div className="text-redwood-muted text-xs">Completados</div>
+              <div className="text-lg font-bold text-redwood-muted">
                 {filteredTasks.filter(t => t.status === 'done').length}
               </div>
             </div>
@@ -531,23 +541,23 @@ export default function TasksAdminPage() {
       {/* Create Task Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-[var(--radius-md)] p-6 w-[600px] max-h-[90vh] overflow-auto">
+          <div className="bg-redwood-surface rounded-[14px] p-6 w-[600px] max-h-[90vh] overflow-auto">
             <h2 className="text-lg font-semibold mb-4">Nueva Task</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Nombre *</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Nombre *</label>
                 <input
                   type="text"
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={newTask.name}
                   onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
                   placeholder="Nombre de la tarea"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Descripción</label>
                 <textarea
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={newTask.description}
                   onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
                   placeholder="Descripción detallada"
@@ -556,9 +566,9 @@ export default function TasksAdminPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Proyecto *</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Proyecto *</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.projectId}
                     onChange={(e) => setNewTask({ ...newTask, projectId: e.target.value })}
                   >
@@ -569,9 +579,9 @@ export default function TasksAdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Task Padre (Opcional)</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Task Padre (Opcional)</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.parentId}
                     onChange={(e) => setNewTask({ ...newTask, parentId: e.target.value })}
                   >
@@ -582,11 +592,26 @@ export default function TasksAdminPage() {
                   </select>
                 </div>
               </div>
+              {newTask.projectId && (
+                <div>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Fase del Proyecto</label>
+                  <select
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
+                    value={newTask.phaseId}
+                    onChange={(e) => setNewTask({ ...newTask, phaseId: e.target.value })}
+                  >
+                    <option value="">Sin fase</option>
+                    {PROJECT_PHASES.map((phase) => (
+                      <option key={phase.id} value={phase.id}>{phase.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Asignado a</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Asignado a</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.assigneeId}
                     onChange={(e) => setNewTask({ ...newTask, assigneeId: e.target.value })}
                   >
@@ -597,12 +622,12 @@ export default function TasksAdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Horas Estimadas</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Horas Estimadas</label>
                   <input
                     type="number"
                     min="0"
                     step="0.5"
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.estimatedHours}
                     onChange={(e) => setNewTask({ ...newTask, estimatedHours: parseFloat(e.target.value) || 0 })}
                   />
@@ -610,27 +635,27 @@ export default function TasksAdminPage() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Fecha Inicio</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Fecha Inicio</label>
                   <input
                     type="date"
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.startDate}
                     onChange={(e) => setNewTask({ ...newTask, startDate: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Fecha Fin</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Fecha Fin</label>
                   <input
                     type="date"
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.endDate}
                     onChange={(e) => setNewTask({ ...newTask, endDate: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Prioridad</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Prioridad</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newTask.priority}
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
                   >
@@ -642,7 +667,7 @@ export default function TasksAdminPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
-              <Button variant="secondary" onClick={() => setShowCreateModal(false)}>
+              <Button variant="subtle" onClick={() => setShowCreateModal(false)}>
                 Cancelar
               </Button>
               <Button 
@@ -660,22 +685,22 @@ export default function TasksAdminPage() {
       {/* Edit Task Modal */}
       {editingTask && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-[var(--radius-md)] p-6 w-[500px]">
+          <div className="bg-redwood-surface rounded-[14px] p-6 w-[500px]">
             <h2 className="text-lg font-semibold mb-4">Editar Task</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Nombre</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Nombre</label>
                 <input
                   type="text"
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={editingTask.name}
                   onChange={(e) => setEditingTask({ ...editingTask, name: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Descripción</label>
                 <textarea
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={editingTask.description || ''}
                   onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
                   rows={3}
@@ -683,9 +708,9 @@ export default function TasksAdminPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Asignado a</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Asignado a</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={editingTask.assigneeId || ''}
                     onChange={(e) => setEditingTask({ ...editingTask, assigneeId: e.target.value || undefined })}
                   >
@@ -696,12 +721,12 @@ export default function TasksAdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Horas Estimadas</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Horas Estimadas</label>
                   <input
                     type="number"
                     min="0"
                     step="0.5"
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={editingTask.estimatedHours}
                     onChange={(e) => setEditingTask({ ...editingTask, estimatedHours: parseFloat(e.target.value) || 0 })}
                   />
@@ -709,9 +734,9 @@ export default function TasksAdminPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Estado</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Estado</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={editingTask.status}
                     onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value as Task['status'] })}
                   >
@@ -721,9 +746,9 @@ export default function TasksAdminPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Prioridad</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Prioridad</label>
                   <select
-                    className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={editingTask.priority}
                     onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value as 'low' | 'medium' | 'high' })}
                   >
@@ -734,7 +759,7 @@ export default function TasksAdminPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Progreso ({editingTask.progress}%)</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Progreso ({editingTask.progress}%)</label>
                 <input
                   type="range"
                   min="0"
@@ -746,7 +771,7 @@ export default function TasksAdminPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
-              <Button variant="secondary" onClick={() => setEditingTask(null)}>
+              <Button variant="subtle" onClick={() => setEditingTask(null)}>
                 Cancelar
               </Button>
               <Button variant="primary" onClick={handleUpdateTask}>
@@ -760,42 +785,42 @@ export default function TasksAdminPage() {
       {/* Time Entry Modal */}
       {showTimeEntryModal && selectedTask && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-[var(--radius-md)] p-6 w-[400px]">
+          <div className="bg-redwood-surface rounded-[14px] p-6 w-[400px]">
             <h2 className="text-lg font-semibold mb-2">Registrar Horas</h2>
-            <p className="text-sm text-gray-600 mb-4">{selectedTask.name}</p>
+            <p className="text-sm text-redwood-muted mb-4">{selectedTask.name}</p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Horas</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Horas</label>
                 <input
                   type="number"
                   min="0.5"
                   max="24"
                   step="0.5"
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={timeEntry.hours}
                   onChange={(e) => setTimeEntry({ ...timeEntry, hours: parseFloat(e.target.value) || 0 })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Fecha</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Fecha</label>
                 <input
                   type="date"
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={timeEntry.date}
                   onChange={(e) => setTimeEntry({ ...timeEntry, date: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Descripción del trabajo</label>
+                <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Descripción del trabajo</label>
                 <textarea
-                  className="w-full border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] px-3 py-2"
+                  className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                   value={timeEntry.description}
                   onChange={(e) => setTimeEntry({ ...timeEntry, description: e.target.value })}
                   placeholder="¿Qué hiciste?"
                   rows={3}
                 />
               </div>
-              <div className="bg-gray-50 p-3 rounded text-sm">
+              <div className="bg-redwood-surface p-3 rounded text-sm">
                 <div className="flex justify-between">
                   <span>Estimado:</span>
                   <span className="font-medium">{selectedTask.estimatedHours}h</span>
@@ -813,7 +838,7 @@ export default function TasksAdminPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
-              <Button variant="secondary" onClick={() => { setShowTimeEntryModal(false); setSelectedTask(null); }}>
+              <Button variant="subtle" onClick={() => { setShowTimeEntryModal(false); setSelectedTask(null); }}>
                 Cancelar
               </Button>
               <Button 

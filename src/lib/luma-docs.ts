@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { luma } from './luma';
 
 // Document Store Collections
@@ -10,6 +11,11 @@ const COLLECTIONS = {
   RESOURCES: 'resources',
   ALLOCATIONS: 'allocations',
   APPROVALS: 'approvals',
+  PROJECT_PHASES: 'project_phases',
+  PHASE_APPROVALS: 'phase_approvals',
+  APPROVAL_FILES: 'approval_files',
+  CLIENTS: 'clients',
+  NOTIFICATIONS: 'notifications',
 } as const;
 
 // Users
@@ -42,8 +48,13 @@ export async function getUserByEmail(email: string) {
 
 export async function createUser(user: Omit<UserDoc, 'createdAt' | 'updatedAt'>) {
   const now = Date.now();
+  let password = user.password;
+  if (password && !password.startsWith('$2b$') && !password.startsWith('$2a$')) {
+    password = await bcrypt.hash(password, 10);
+  }
   const doc: UserDoc = {
     ...user,
+    password,
     isActive: user.isActive ?? true,
     createdAt: now,
     updatedAt: now,
@@ -55,7 +66,16 @@ export async function createUser(user: Omit<UserDoc, 'createdAt' | 'updatedAt'>)
 export async function updateUser(id: string, updates: Partial<Omit<UserDoc, 'id' | 'createdAt'>>) {
   const existing = await getUserById(id);
   if (!existing) return null;
-  
+
+  // Hash password if it's being updated and isn't already hashed
+  if (
+    updates.password &&
+    !updates.password.startsWith('$2b$') &&
+    !updates.password.startsWith('$2a$')
+  ) {
+    updates = { ...updates, password: await bcrypt.hash(updates.password, 10) };
+  }
+
   const doc: UserDoc = {
     ...existing,
     ...updates,
@@ -69,10 +89,19 @@ export async function updateUser(id: string, updates: Partial<Omit<UserDoc, 'id'
 export async function authenticateUser(email: string, password: string): Promise<UserDoc | null> {
   const user = await getUserByEmail(email);
   if (!user || !user.isActive) return null;
-  
-  // Simple password comparison (in production use bcrypt)
-  if (user.password && user.password !== password) return null;
-  
+  if (!user.password) return null;
+
+  const isBcrypt = user.password.startsWith('$2b$') || user.password.startsWith('$2a$');
+
+  if (isBcrypt) {
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return null;
+  } else {
+    // Legacy plaintext — compare and auto-upgrade on success
+    if (user.password !== password) return null;
+    bcrypt.hash(password, 10).then(hash => updateUser(user.id, { password: hash })).catch(() => null);
+  }
+
   return user;
 }
 
@@ -183,6 +212,7 @@ export interface TaskDoc {
   id: string;
   projectId: string;
   parentId?: string;
+  phaseId?: string;
   name: string;
   description?: string;
   assigneeId?: string;
@@ -332,9 +362,9 @@ export async function createTaskTimeEntry(entry: Omit<TaskTimeEntryDoc, 'created
 }
 
 export async function updateTaskTimeEntry(id: string, updates: Partial<Omit<TaskTimeEntryDoc, 'id' | 'createdAt'>>) {
-  const allDocs = await luma.findDocs<TaskTimeEntryDoc>(COLLECTIONS.TASK_TIME_ENTRIES, undefined, 1000);
-  const existing = allDocs.find(d => d.id === id)?.doc;
-  if (!existing) return null;
+  const result = await luma.getDoc<TaskTimeEntryDoc>(COLLECTIONS.TASK_TIME_ENTRIES, id);
+  if (!result) return null;
+  const existing = result.doc;
   
   const doc: TaskTimeEntryDoc = { ...existing, ...updates };
   await luma.putDoc(COLLECTIONS.TASK_TIME_ENTRIES, id, doc);
@@ -348,8 +378,8 @@ export async function updateTaskTimeEntry(id: string, updates: Partial<Omit<Task
 }
 
 export async function deleteTaskTimeEntry(id: string) {
-  const allDocs = await luma.findDocs<TaskTimeEntryDoc>(COLLECTIONS.TASK_TIME_ENTRIES, undefined, 1000);
-  const entry = allDocs.find(d => d.id === id)?.doc;
+  const result = await luma.getDoc<TaskTimeEntryDoc>(COLLECTIONS.TASK_TIME_ENTRIES, id);
+  const entry = result?.doc;
   
   if (entry) {
     await luma.deleteDoc(COLLECTIONS.TASK_TIME_ENTRIES, id);
@@ -475,11 +505,9 @@ export async function createApproval(approval: Omit<ApprovalDoc, 'createdAt'>) {
 }
 
 export async function updateApproval(id: string, updates: Partial<ApprovalDoc>) {
-  const allDocs = await luma.findDocs<ApprovalDoc>(COLLECTIONS.APPROVALS, undefined, 1000);
-  const existing = allDocs.find(d => d.id === id)?.doc;
-  if (!existing) return null;
-  
-  const doc = { ...existing, ...updates };
+  const result = await luma.getDoc<ApprovalDoc>(COLLECTIONS.APPROVALS, id);
+  if (!result) return null;
+  const doc = { ...result.doc, ...updates };
   await luma.putDoc(COLLECTIONS.APPROVALS, id, doc);
   return doc;
 }
@@ -529,11 +557,9 @@ export async function createTimeEntry(entry: Omit<TimeEntryDoc, 'createdAt' | 'u
 }
 
 export async function updateTimeEntry(id: string, updates: Partial<Omit<TimeEntryDoc, 'id' | 'createdAt'>>) {
-  const allDocs = await luma.findDocs<TimeEntryDoc>(COLLECTIONS.TIME_ENTRIES, undefined, 1000);
-  const existing = allDocs.find(d => d.id === id)?.doc;
-  if (!existing) return null;
-  
-  const doc = { ...existing, ...updates, updatedAt: Date.now() };
+  const result = await luma.getDoc<TimeEntryDoc>(COLLECTIONS.TIME_ENTRIES, id);
+  if (!result) return null;
+  const doc = { ...result.doc, ...updates, updatedAt: Date.now() };
   await luma.putDoc(COLLECTIONS.TIME_ENTRIES, id, doc);
   return doc;
 }
@@ -571,4 +597,304 @@ export async function clearAllData() {
   }
   
   console.log('All data cleared');
+}
+
+export interface ProjectPhaseDoc {
+  id: string;
+  projectId: string;
+  phaseId: string;
+  name: string;
+  order: number;
+  status: 'pending' | 'in_progress' | 'completed';
+  approvedAt?: string;
+  approvedBy?: string;
+  estimatedHours?: number;
+  actualHours?: number;
+  actualCost?: number;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export async function getProjectPhases(projectId: string) {
+  const docs = await luma.findDocs<ProjectPhaseDoc>(COLLECTIONS.PROJECT_PHASES, undefined, 1000);
+  return docs
+    .map(d => d.doc)
+    .filter(p => p.projectId === projectId)
+    .sort((a, b) => a.order - b.order);
+}
+
+export async function getProjectPhaseById(id: string) {
+  const result = await luma.getDoc<ProjectPhaseDoc>(COLLECTIONS.PROJECT_PHASES, id);
+  return result?.doc || null;
+}
+
+export async function createProjectPhases(projectId: string) {
+  const now = Date.now();
+  const phaseDefs = [
+    { id: 'activity', name: 'Actividad', order: 1 },
+    { id: 'prototype_delivery', name: 'Elaboración y Entrega de Prototipos', order: 2 },
+    { id: 'prototype_presentation', name: 'Presentación de Prototipo', order: 3 },
+    { id: 'prototype_approval', name: 'Aprobación de prototipo', order: 4 },
+    { id: 'development_testing', name: 'Desarrollo y Pruebas', order: 5 },
+    { id: 'sb_delivery', name: 'Entrega en SB a cliente', order: 6 },
+    { id: 'client_testing', name: 'Pruebas del cliente, solución de obs y correcciones', order: 7 },
+    { id: 'production_release', name: 'Pase a producción', order: 8 },
+    { id: 'client_confirmation', name: 'Confirmación cliente', order: 9 },
+    { id: 'closure', name: 'Cierre', order: 10 },
+  ];
+
+  const docs: ProjectPhaseDoc[] = phaseDefs.map(phase => ({
+    id: `${projectId}_${phase.id}`,
+    projectId,
+    phaseId: phase.id,
+    name: phase.name,
+    order: phase.order,
+    status: 'pending',
+    createdAt: now,
+  }));
+
+  await Promise.all(docs.map(doc => luma.putDoc(COLLECTIONS.PROJECT_PHASES, doc.id, doc)));
+  return docs;
+}
+
+export async function updateProjectPhase(id: string, updates: Partial<Omit<ProjectPhaseDoc, 'id' | 'createdAt'>>) {
+  const existing = await getProjectPhaseById(id);
+  if (!existing) return null;
+  
+  const doc: ProjectPhaseDoc = {
+    ...existing,
+    ...updates,
+    updatedAt: Date.now(),
+  };
+  await luma.putDoc(COLLECTIONS.PROJECT_PHASES, id, doc);
+  return doc;
+}
+
+export async function calculatePhaseCosts(projectId: string, phaseId: string) {
+  const allTasks = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, undefined, 1000);
+  const phaseTasks = allTasks.filter(d => d.doc.projectId === projectId && d.doc.phaseId === phaseId);
+  
+  let totalHours = 0;
+  let totalCost = 0;
+  
+  for (const taskDoc of phaseTasks) {
+    const task = taskDoc.doc;
+    const timeEntries = await getTaskTimeEntries({ taskId: task.id });
+    
+    for (const entry of timeEntries) {
+      totalHours += entry.hours;
+      const resources = await getResources();
+      const resource = resources.find(r => r.userId === entry.userId);
+      if (resource) {
+        totalCost += entry.hours * resource.hourlyRate;
+      }
+    }
+  }
+  
+  await updateProjectPhase(`${projectId}_${phaseId}`, {
+    actualHours: totalHours,
+    actualCost: totalCost,
+  });
+  
+  return { totalHours, totalCost };
+}
+
+export interface PhaseApprovalDoc {
+  id: string;
+  projectPhaseId: string;
+  approvedAt: string;
+  approvedBy: string;
+  callDate?: string;
+  callTime?: string;
+  callPerson?: string;
+  callNotes?: string;
+  notes?: string;
+  createdAt: number;
+}
+
+export async function getPhaseApproval(projectPhaseId: string) {
+  const docs = await luma.findDocs<PhaseApprovalDoc>(COLLECTIONS.PHASE_APPROVALS, undefined, 1000);
+  return docs.find(d => d.doc.projectPhaseId === projectPhaseId)?.doc || null;
+}
+
+export async function createPhaseApproval(approval: Omit<PhaseApprovalDoc, 'createdAt'>) {
+  const doc: PhaseApprovalDoc = {
+    ...approval,
+    createdAt: Date.now(),
+  };
+  await luma.putDoc(COLLECTIONS.PHASE_APPROVALS, approval.id, doc);
+  
+  await updateProjectPhase(approval.projectPhaseId, {
+    status: 'completed',
+    approvedAt: approval.approvedAt,
+    approvedBy: approval.approvedBy,
+  });
+  
+  return doc;
+}
+
+export async function updatePhaseApproval(id: string, updates: Partial<Omit<PhaseApprovalDoc, 'id' | 'createdAt'>>) {
+  const result = await luma.getDoc<PhaseApprovalDoc>(COLLECTIONS.PHASE_APPROVALS, id);
+  if (!result) return null;
+  const existing = result.doc;
+  
+  const doc: PhaseApprovalDoc = { ...existing, ...updates };
+  await luma.putDoc(COLLECTIONS.PHASE_APPROVALS, id, doc);
+  return doc;
+}
+
+export interface ApprovalFileDoc {
+  id: string;
+  phaseApprovalId: string;
+  name: string;
+  type: string;
+  size: number;
+  data: string;
+  uploadedBy: string;
+  uploadedAt: number;
+}
+
+export async function getApprovalFiles(phaseApprovalId: string) {
+  const docs = await luma.findDocs<ApprovalFileDoc>(COLLECTIONS.APPROVAL_FILES, undefined, 1000);
+  return docs
+    .map(d => d.doc)
+    .filter(f => f.phaseApprovalId === phaseApprovalId)
+    .sort((a, b) => b.uploadedAt - a.uploadedAt);
+}
+
+export async function createApprovalFile(file: Omit<ApprovalFileDoc, 'uploadedAt'>) {
+  const doc: ApprovalFileDoc = {
+    ...file,
+    uploadedAt: Date.now(),
+  };
+  await luma.putDoc(COLLECTIONS.APPROVAL_FILES, file.id, doc);
+  return doc;
+}
+
+export async function deleteApprovalFile(id: string) {
+  await luma.deleteDoc(COLLECTIONS.APPROVAL_FILES, id);
+}
+
+export interface ClientDoc {
+  id: string;
+  name: string;
+  contact?: string;
+  email?: string;
+  phone?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export async function getClients() {
+  const docs = await luma.findDocs<ClientDoc>(COLLECTIONS.CLIENTS, undefined, 1000);
+  return docs.map(d => d.doc).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getClientById(id: string) {
+  const result = await luma.getDoc<ClientDoc>(COLLECTIONS.CLIENTS, id);
+  return result?.doc || null;
+}
+
+export async function createClient(client: Omit<ClientDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: ClientDoc = {
+    ...client,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await luma.putDoc(COLLECTIONS.CLIENTS, client.id, doc);
+  return doc;
+}
+
+export async function updateClient(id: string, updates: Partial<Omit<ClientDoc, 'id' | 'createdAt'>>) {
+  const existing = await getClientById(id);
+  if (!existing) return null;
+  
+  const doc: ClientDoc = {
+    ...existing,
+    ...updates,
+    updatedAt: Date.now(),
+  };
+  await luma.putDoc(COLLECTIONS.CLIENTS, id, doc);
+  return doc;
+}
+
+export interface NotificationDoc {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  projectId?: string;
+  phaseId?: string;
+  read: boolean;
+  readAt?: number;
+  createdAt: number;
+}
+
+export async function getNotifications(userId: string, limit = 50) {
+  const docs = await luma.findDocs<NotificationDoc>(COLLECTIONS.NOTIFICATIONS, undefined, 1000);
+  return docs
+    .map(d => d.doc)
+    .filter(n => n.userId === userId)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit);
+}
+
+export async function getUnreadNotificationCount(userId: string) {
+  const docs = await luma.findDocs<NotificationDoc>(COLLECTIONS.NOTIFICATIONS, undefined, 1000);
+  return docs.filter(d => d.doc.userId === userId && !d.doc.read).length;
+}
+
+export async function createNotification(notification: Omit<NotificationDoc, 'createdAt'>) {
+  const doc: NotificationDoc = {
+    ...notification,
+    createdAt: Date.now(),
+  };
+  await luma.putDoc(COLLECTIONS.NOTIFICATIONS, notification.id, doc);
+  return doc;
+}
+
+export async function markNotificationAsRead(id: string) {
+  const result = await luma.getDoc<NotificationDoc>(COLLECTIONS.NOTIFICATIONS, id);
+  if (!result) return null;
+  const existing = result.doc;
+  
+  const doc: NotificationDoc = {
+    ...existing,
+    read: true,
+    readAt: Date.now(),
+  };
+  await luma.putDoc(COLLECTIONS.NOTIFICATIONS, id, doc);
+  return doc;
+}
+
+export async function markAllNotificationsAsRead(userId: string) {
+  const notifications = await getNotifications(userId, 1000);
+  await Promise.all(
+    notifications.filter(n => !n.read).map(n => markNotificationAsRead(n.id))
+  );
+}
+
+export async function deleteProject(id: string) {
+  const phases = await getProjectPhases(id);
+  for (const phase of phases) {
+    const approval = await getPhaseApproval(phase.id);
+    if (approval) {
+      const files = await getApprovalFiles(approval.id);
+      for (const file of files) {
+        await deleteApprovalFile(file.id);
+      }
+      await luma.deleteDoc(COLLECTIONS.PHASE_APPROVALS, approval.id);
+    }
+    await luma.deleteDoc(COLLECTIONS.PROJECT_PHASES, phase.id);
+  }
+  
+  const allTasks = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, undefined, 1000);
+  const projectTasks = allTasks.filter(d => d.doc.projectId === id);
+  for (const taskDoc of projectTasks) {
+    await deleteTask(taskDoc.doc.id);
+  }
+  
+  await luma.deleteDoc(COLLECTIONS.PROJECTS, id);
 }

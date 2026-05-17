@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authenticateUser } from '@/lib/luma-docs';
+import { signToken } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
@@ -22,13 +23,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Return user data (exclude password)
+    const token = await signToken({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    });
+
     const { password: _, ...userWithoutPassword } = user;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       data: userWithoutPassword,
       success: true,
     });
+
+    response.cookies.set('timeos_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 8 * 60 * 60, // 8 hours in seconds
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

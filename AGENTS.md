@@ -32,6 +32,110 @@ npx tsc --noEmit # Type checking
 
 ---
 
+## CHECKPOINT: Sistema de Fases de Proyecto (04/03/2026)
+
+### ✅ COMPLETADO
+
+#### Backend (APIs y Datos)
+- [x] **Nuevos tipos en `types/index.ts`**:
+  - `ProjectPhase` - Fases del proyecto
+  - `PhaseApproval` - Aprobaciones de fase
+  - `ApprovalFile` - Archivos de evidencia (base64)
+  - `Client` - Entidad de clientes
+  - `Notification` - Sistema de notificaciones
+  - `PROJECT_PHASES` - 10 fases fijas del proyecto
+
+- [x] **Nuevas colecciones en `luma-docs.ts`**:
+  - `project_phases` - Fases de cada proyecto
+  - `phase_approvals` - Aprobaciones de fase
+  - `approval_files` - Archivos de evidencia
+  - `clients` - Clientes persistentes
+  - `notifications` - Notificaciones del sistema
+
+- [x] **Nuevas APIs**:
+  - `GET/PUT/DELETE /api/projects/[id]` - Detalle, editar, eliminar proyecto
+  - `GET /api/projects/[id]/phases` - Lista de fases con costos
+  - `GET/POST /api/projects/[id]/phases/[phaseId]/approval` - Aprobación de fase
+  - `GET/POST/DELETE /api/approval-files` - Gestión de archivos
+  - `GET/POST /api/clients` - Clientes persistentes
+  - `GET/PUT/POST /api/notifications` - Sistema de notificaciones
+
+#### Frontend (Páginas y Componentes)
+- [x] **Página de detalle de proyecto** (`/projects/[id]/page.tsx`):
+  - Header con info del proyecto
+  - KPIs de progreso, horas, costos
+  - Timeline de 10 fases
+  - Modal de edición de proyecto
+  - Confirmación de eliminación
+
+- [x] **Componente PhaseTimeline** (`/components/projects/PhaseTimeline.tsx`):
+  - Timeline vertical de fases
+  - Estado visual (pendiente/en progreso/completado)
+  - Horas y costos por fase
+  - Expansión para ver detalles
+  - Botón de aprobación
+
+- [x] **Componente PhaseApprovalModal** (`/components/projects/PhaseApprovalModal.tsx`):
+  - Campos de evidencia de llamada (fecha, hora, persona, notas)
+  - Notas generales
+  - Upload de archivos (imágenes, PDFs)
+  - Guardado en base64 en Luma
+
+- [x] **Acciones en lista de proyectos** (`/projects/page.tsx`):
+  - Ver detalles (navega a `/projects/[id]`)
+  - Editar (modal inline)
+  - Eliminar (con confirmación)
+  - Establecer línea base
+
+- [x] **Sistema de notificaciones**:
+  - `NotificationBell` - Campana en header con contador
+  - `Dropdown` - Lista de últimas notificaciones
+  - Página `/notifications` - Bandeja completa
+  - Tipos: phase_approved, phase_rejected, hours_reminder, deadline_warning, project_assigned
+
+- [x] **Header actualizado**:
+  - Campana de notificaciones
+  - Menú de usuario
+  - Logout
+
+### 🔄 PENDIENTE
+
+#### Prioridad Alta
+- [ ] **Asignar tareas a fases**: Modificar tareas existentes para incluir `phaseId`
+- [ ] **Seed data actualizado**: Agregar fases a proyectos de ejemplo
+- [ ] **Cálculo automático de costos**: Integrar en registro de horas
+- [ ] **Notificación de recordatorio de horas**: Verificar al login si el usuario no ha registrado horas hoy
+
+#### Prioridad Media
+- [ ] **Vista de tareas por fase**: En la página de detalle, mostrar tareas de cada fase
+- [ ] **Exportar fase a PDF**: Generar reporte de fase aprobada
+- [ ] **Historial de aprobaciones**: Ver quiénes aprobaron cada fase
+- [ ] **Filtros en timeline**: Filtrar por estado de fase
+
+#### Prioridad Baja
+- [ ] **Notificaciones por email**: Enviar correo al aprobar fase
+- [ ] **Comentarios en fases**: Sistema de comentarios por fase
+- [ ] **Plantillas de fases**: Fases predefinidas por tipo de proyecto
+
+---
+
+## Las 10 Fases Fijas del Proyecto
+
+| # | ID | Nombre |
+|---|-----|--------|
+| 1 | `activity` | Actividad |
+| 2 | `prototype_delivery` | Elaboración y Entrega de Prototipos |
+| 3 | `prototype_presentation` | Presentación de Prototipo |
+| 4 | `prototype_approval` | Aprobación de prototipo |
+| 5 | `development_testing` | Desarrollo y Pruebas |
+| 6 | `sb_delivery` | Entrega en SB a cliente |
+| 7 | `client_testing` | Pruebas del cliente, solución de obs y correcciones |
+| 8 | `production_release` | Pase a producción |
+| 9 | `client_confirmation` | Confirmación cliente |
+| 10 | `closure` | Cierre |
+
+---
+
 ## Plan de Fases de Desarrollo
 
 ### Fase 1: Fundamentos ✅ (COMPLETADO)
@@ -116,6 +220,7 @@ npx tsc --noEmit # Type checking
 | resources:* | ✓ | ✓ | read only |
 | timesheets:* | ✓ | ✓ | ✓ (propias) |
 | users:* | ✓ | ✗ | ✗ |
+| **phases:approve** | ✓ | ✓ | ✗ |
 
 ### Credenciales de Prueba
 - Admin: `ana.garcia@timeos.com` / `admin123`
@@ -156,6 +261,8 @@ src/
 │   ├── (main)/           # Rutas autenticadas
 │   │   ├── page.tsx      # Dashboard
 │   │   ├── projects/     # Gestión de proyectos
+│   │   │   ├── page.tsx  # Lista de proyectos
+│   │   │   └── [id]/     # Detalle de proyecto (NUEVO)
 │   │   ├── planning/     # Gantt
 │   │   ├── tasks/       # Tareas
 │   │   ├── timesheet/    # Registro de horas
@@ -163,22 +270,34 @@ src/
 │   │   ├── reports/      # Reportes de horas
 │   │   ├── costs/       # Dashboard de costos
 │   │   ├── resources/    # Gestión de recursos
+│   │   ├── notifications/ # Bandeja de notificaciones (NUEVO)
 │   │   └── users/       # Gestión de usuarios
 │   ├── api/             # Rutas API
+│   │   ├── projects/[id]/           # NUEVO
+│   │   ├── projects/[id]/phases/    # NUEVO
+│   │   ├── projects/[id]/phases/[phaseId]/approval/  # NUEVO
+│   │   ├── approval-files/          # NUEVO
+│   │   ├── notifications/           # NUEVO
+│   │   └── ...
 │   └── login/           # Página de login
 ├── components/
 │   ├── layout/          # Sidebar, Header, Layout
-│   └── ui/              # Componentes UI
+│   ├── ui/              # Componentes UI
+│   ├── projects/        # Componentes de proyectos (NUEVO)
+│   │   ├── PhaseTimeline.tsx
+│   │   └── PhaseApprovalModal.tsx
+│   └── notifications/   # Componentes de notificaciones (NUEVO)
+│       └── NotificationBell.tsx
 ├── contexts/
 │   ├── AuthContext.tsx  # Autenticación
 │   └── SidebarContext.tsx # Estado del sidebar
 ├── hooks/
 │   └── usePermissions.ts # Permisos por rol
 ├── lib/
-│   ├── luma-docs.ts     # Cliente Luma (NoSQL)
+│   ├── luma-docs.ts     # Cliente Luma (NoSQL) - ACTUALIZADO
 │   └── seed-docs.ts     # Datos de ejemplo
 └── types/
-    └── index.ts         # Tipos TypeScript
+    └── index.ts         # Tipos TypeScript - ACTUALIZADO
 ```
 
 ---
@@ -189,6 +308,12 @@ src/
 |----------|--------|-------------|
 | `/api/users` | GET, POST | Gestión de usuarios |
 | `/api/projects` | GET, POST, PUT | Gestión de proyectos |
+| `/api/projects/[id]` | GET, PUT, DELETE | Detalle/Editar/Eliminar proyecto |
+| `/api/projects/[id]/phases` | GET | Fases del proyecto con costos |
+| `/api/projects/[id]/phases/[phaseId]/approval` | GET, POST | Aprobación de fase |
+| `/api/approval-files` | GET, POST, DELETE | Archivos de evidencia |
+| `/api/clients` | GET, POST | Gestión de clientes |
+| `/api/notifications` | GET, PUT, POST | Sistema de notificaciones |
 | `/api/tasks` | GET, POST, PUT | Gestión de tareas |
 | `/api/timesheets` | GET, POST, PUT | Registro de horas |
 | `/api/approvals` | GET, POST, PUT | Aprobaciones de timesheet |
@@ -218,6 +343,35 @@ src/
 - Alertas de proyectos cercanos a deadline (14 días)
 - Modal para crear nuevos proyectos
 - KPIs: Activos, Completados, En Riesgo, Cerca deadline
+- **NUEVO**: Ver detalles (página de detalle)
+- **NUEVO**: Editar proyecto (modal inline)
+- **NUEVO**: Eliminar proyecto (con confirmación)
+
+### Detalle de Proyecto (NUEVO)
+- Header con info del proyecto (cliente, fechas, presupuesto, estado)
+- KPIs: Fases completadas, Horas totales, Costo real, Progreso
+- Timeline de 10 fases con estado
+- Horas y costos por fase
+- Modal de aprobación de fase con evidencia
+- Modal de edición de proyecto
+- Confirmación de eliminación
+
+### Fases del Proyecto (NUEVO)
+- 10 fases fijas por proyecto
+- Estado: Pendiente / En Progreso / Completado
+- Aprobación con evidencia:
+  - Fecha y hora de aprobación
+  - Evidencia de llamada (fecha, hora, persona, notas)
+  - Notas generales
+  - Archivos adjuntos (imágenes, PDFs en base64)
+- Cálculo automático de horas y costos por fase
+
+### Notificaciones (NUEVO)
+- Campana en header con contador de no leídas
+- Dropdown con últimas notificaciones
+- Página de bandeja completa
+- Tipos: fase aprobada, fase rechazada, recordatorio de horas, alerta de deadline, proyecto asignado
+- Marcar como leída individual o todas
 
 ### Planificación (Gantt)
 - Panel de tareas estilo Excel/Grid (Microsoft Project)
@@ -260,11 +414,11 @@ src/
 
 ## Próximos Pasos Inmediatos
 
-1. **Completar Fase 3**: Gantt avanzado con dependencias, cascade, ruta crítica
-2. **Fase 4**: Integrar HyperFormula para hojas de cálculo
-3. **Fase 5**: Tablas dinámicas con react-pivottable
-4. **Fase 6**: Dashboards profesionales con Tremor
-5. **Integración NetSuite**: Usar Records de NetSuite para almacenamiento
+1. **Asignar tareas a fases**: Modificar tareas existentes para incluir `phaseId`
+2. **Seed data actualizado**: Agregar fases a proyectos de ejemplo
+3. **Notificación de recordatorio**: Verificar al login si el usuario no ha registrado horas hoy
+4. **Fase 5**: Tablas dinámicas con react-pivottable
+5. **Fase 6**: Dashboards profesionales con Tremor
 
 ---
 
@@ -274,3 +428,5 @@ src/
 - Los datos se persisten en NetSuite mediante Records
 - El frontend está optimizado para React 18+ con Next.js 16
 - Se requiere autenticación para todas las rutas excepto /login
+- **Archivos de evidencia**: Se almacenan en base64 en Luma (máximo recomendado 5MB por archivo)
+- **Permisos de aprobación**: Solo admin y manager pueden aprobar fases

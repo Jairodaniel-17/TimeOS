@@ -19,6 +19,8 @@ export async function GET(request: Request) {
     const parentId = searchParams.get('parentId');
     const includeHierarchy = searchParams.get('includeHierarchy') === 'true';
     const id = searchParams.get('id');
+    const page = parseInt(searchParams.get('page') || '0');
+    const pageSize = parseInt(searchParams.get('pageSize') || '0');
     
     // Get projects and users for enrichment
     const [projects, users] = await Promise.all([getProjects(), getUsers()]);
@@ -56,14 +58,22 @@ export async function GET(request: Request) {
       if (assigneeId) tasks = tasks.filter(t => t.assigneeId === assigneeId);
     }
     
-    // Enrich with project and user info
     const enrichedTasks = tasks.map(t => ({
       ...t,
       project: t.projectId ? { name: projectMap.get(t.projectId)?.name || '' } : undefined,
       assignee: t.assigneeId ? { name: userMap.get(t.assigneeId)?.name || '' } : undefined,
     }));
-    
-    return NextResponse.json({ data: enrichedTasks, success: true });
+
+    const total = enrichedTasks.length;
+    const paginated = page > 0 && pageSize > 0
+      ? enrichedTasks.slice((page - 1) * pageSize, page * pageSize)
+      : enrichedTasks;
+
+    return NextResponse.json({
+      data: paginated,
+      ...(page > 0 && pageSize > 0 ? { pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } } : {}),
+      success: true,
+    });
   } catch (error) {
     console.error('Error fetching tasks:', error);
     return NextResponse.json({ error: 'Failed to fetch tasks', success: false }, { status: 500 });

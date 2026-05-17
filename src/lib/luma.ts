@@ -1,9 +1,14 @@
-const LUMA_API_URL = process.env.LUMA_API_URL || 'http://0.0.0.0:1234';
-const LUMA_API_KEY = process.env.LUMA_API_KEY || 'dev';
+const LUMA_API_URL = process.env.LUMA_API_URL || 'https://luma.deepgen.qzz.io';
+const LUMA_API_KEY = process.env.LUMA_API_KEY || 'AmyRose#Sonic@Amor';
+
+type CacheEntry = { data: unknown; expires: number };
 
 export class LumaClient {
   private baseUrl: string;
   private headers: HeadersInit;
+  private cache = new Map<string, CacheEntry>();
+  private inFlight = new Map<string, Promise<unknown>>();
+  private readonly CACHE_TTL = 30_000; // 30 seconds
 
   constructor(baseUrl: string = LUMA_API_URL, apiKey: string = LUMA_API_KEY) {
     this.baseUrl = baseUrl;
@@ -11,6 +16,30 @@ export class LumaClient {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     };
+  }
+
+  private fromCache<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expires) { this.cache.delete(key); return null; }
+    return entry.data as T;
+  }
+
+  private toCache(key: string, data: unknown): void {
+    // Evict old entries if cache grows too large
+    if (this.cache.size > 500) {
+      const now = Date.now();
+      for (const [k, v] of this.cache) { if (now > v.expires) this.cache.delete(k); }
+    }
+    this.cache.set(key, { data, expires: Date.now() + this.CACHE_TTL });
+  }
+
+  invalidateCollection(collection: string): void {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(`find:${collection}:`) || key.startsWith(`get:${collection}:`)) {
+        this.cache.delete(key);
+      }
+    }
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -86,35 +115,70 @@ export class LumaClient {
 
   // Document Store
   async getDoc<T = unknown>(collection: string, id: string): Promise<{ doc: T; id: string; revision: number } | null> {
-    try {
-      return await this.request(`/v1/doc/${collection}/${encodeURIComponent(id)}`);
-    } catch {
-      return null;
+    const cacheKey = `get:${collection}:${id}`;
+    const cached = this.fromCache<{ doc: T; id: string; revision: number }>(cacheKey);
+    if (cached !== null) return cached;
+
+    if (this.inFlight.has(cacheKey)) {
+      return this.inFlight.get(cacheKey) as Promise<{ doc: T; id: string; revision: number } | null>;
     }
+
+    const promise = this.request<{ doc: T; id: string; revision: number }>(`/v1/doc/${collection}/${encodeURIComponent(id)}`)
+      .then(result => {
+        this.toCache(cacheKey, result);
+        this.inFlight.delete(cacheKey);
+        return result;
+      }).catch(() => {
+        this.inFlight.delete(cacheKey);
+        return null;
+      });
+
+    this.inFlight.set(cacheKey, promise);
+    return promise;
   }
 
   async putDoc<T = unknown>(collection: string, id: string, doc: T): Promise<{ id: string; revision: number }> {
-    return this.request(`/v1/doc/${collection}/${encodeURIComponent(id)}`, {
+    const result = await this.request<{ id: string; revision: number }>(`/v1/doc/${collection}/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(doc),
     });
+    // Update single-doc cache with new value, invalidate collection-level findDocs cache
+    this.toCache(`get:${collection}:${id}`, { doc, id, revision: result.revision });
+    this.invalidateCollection(collection);
+    return result;
   }
 
   async deleteDoc(collection: string, id: string): Promise<void> {
     await this.request(`/v1/doc/${collection}/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+    this.cache.delete(`get:${collection}:${id}`);
+    this.invalidateCollection(collection);
   }
 
   async findDocs<T = unknown>(collection: string, filter?: Record<string, unknown>, limit?: number): Promise<Array<{ doc: T; id: string; revision: number }>> {
-    const response = await this.request<{ documents: Array<{ doc: T; id: string; revision: number }> }>(
+    const cacheKey = `find:${collection}:${JSON.stringify(filter ?? null)}:${limit ?? ''}`;
+    const cached = this.fromCache<Array<{ doc: T; id: string; revision: number }>>(cacheKey);
+    if (cached !== null) return cached;
+
+    if (this.inFlight.has(cacheKey)) {
+      return this.inFlight.get(cacheKey) as Promise<Array<{ doc: T; id: string; revision: number }>>;
+    }
+
+    const promise = this.request<{ documents: Array<{ doc: T; id: string; revision: number }> }>(
       `/v1/doc/${collection}/find`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ filter, limit }),
-      }
-    );
-    return response.documents;
+      { method: 'POST', body: JSON.stringify({ filter, limit }) }
+    ).then(response => {
+      this.toCache(cacheKey, response.documents);
+      this.inFlight.delete(cacheKey);
+      return response.documents;
+    }).catch(err => {
+      this.inFlight.delete(cacheKey);
+      throw err;
+    });
+
+    this.inFlight.set(cacheKey, promise);
+    return promise;
   }
 
   // Vector Operations

@@ -1,9 +1,19 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
-import { Button, KPICard, Card, Badge } from '@/components/ui';
-import { Clock, CheckCircle, Users, Calendar, RefreshCw, Plus, Download, ArrowRight } from 'lucide-react';
+import { Button, KPICard, Card, CardHeader, Badge } from '@/components/ui';
+import {
+  Clock,
+  CheckCircle,
+  Users,
+  Calendar,
+  RefreshCw,
+  Plus,
+  ArrowRight,
+  Activity,
+  TrendingUp,
+} from 'lucide-react';
 import Link from 'next/link';
 import { getWeekNumber, getCurrentYear } from '@/lib/utils';
 
@@ -36,14 +46,25 @@ interface KPIData {
   projectHours: Record<string, number>;
 }
 
-interface DashboardData {
-  entries: TimeEntry[];
-  approvals: Approval[];
+interface DayBar {
+  day: string;
+  pct: number;
+  hours: number;
 }
+
+const CHART_COLORS = [
+  'var(--color-redwood-primary)',
+  'var(--color-redwood-green)',
+  '#cd7d1a',
+  'var(--color-oracle-red)',
+  '#7c6452',
+];
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri'] as const;
+const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const [isPending, startTransition] = useTransition();
   const [kpiData, setKpiData] = useState<KPIData>({
     totalHours: 0,
     pendingApprovals: 0,
@@ -53,60 +74,67 @@ export default function Dashboard() {
   });
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
+  const [weekDayBars, setWeekDayBars] = useState<DayBar[]>(
+    DAY_LABELS.map(day => ({ day, pct: 0, hours: 0 }))
+  );
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const currentWeek = getWeekNumber();
-        const currentYear = getCurrentYear();
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const currentWeek = getWeekNumber();
+      const currentYear = getCurrentYear();
 
-        // Fetch all dashboard data in single optimized call
-        const [entriesRes, approvalsRes] = await Promise.all([
-          fetch(`/api/timesheets?weekNumber=${currentWeek}&year=${currentYear}&limit=5`),
-          fetch('/api/approvals?status=pending&limit=5'),
-        ]);
+      const [entriesRes, approvalsRes] = await Promise.all([
+        fetch(`/api/timesheets?weekNumber=${currentWeek}&year=${currentYear}&limit=500`),
+        fetch('/api/approvals?status=pending&limit=5'),
+      ]);
 
-        const entriesData = await entriesRes.json();
-        const approvalsData = await approvalsRes.json();
+      const [entriesData, approvalsData] = await Promise.all([
+        entriesRes.json(),
+        approvalsRes.json(),
+      ]);
 
-        if (entriesData.success) {
-          const entries = entriesData.data as TimeEntry[];
-          setRecentEntries(entries.slice(0, 5));
-          const totalHours = entries.reduce((sum: number, e: TimeEntry) => sum + e.total, 0);
-          
-          // Calculate hours per project
-          const projectHours: Record<string, number> = {};
-          entries.forEach((e: TimeEntry) => {
-            const projectName = e.project?.name || 'Sin proyecto';
-            projectHours[projectName] = (projectHours[projectName] || 0) + e.total;
-          });
-          
-          setKpiData(prev => ({ ...prev, totalHours, projectHours }));
-        }
+      if (entriesData.success) {
+        const entries = entriesData.data as TimeEntry[];
+        setRecentEntries(entries.slice(0, 5));
 
-        if (approvalsData.success) {
-          const approvals = approvalsData.data as Approval[];
-          setPendingApprovals(approvals.slice(0, 5));
-          setKpiData(prev => ({ ...prev, pendingApprovals: approvals.length }));
-        }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
+        const totalHours = entries.reduce((sum: number, e: TimeEntry) => sum + e.total, 0);
+
+        const projectHours: Record<string, number> = {};
+        entries.forEach((e: TimeEntry) => {
+          const name = e.project?.name || 'Sin proyecto';
+          projectHours[name] = (projectHours[name] || 0) + e.total;
+        });
+
+        // Compute real hours per weekday
+        const dayTotals = DAY_KEYS.map(key =>
+          entries.reduce((sum, e) => sum + ((e as unknown as Record<string, Record<string, number>>).hours?.[key] || 0), 0)
+        );
+        const maxH = Math.max(...dayTotals, 1);
+        setWeekDayBars(dayTotals.map((h, i) => ({
+          day: DAY_LABELS[i],
+          pct: Math.round((h / maxH) * 100),
+          hours: Math.round(h * 10) / 10,
+        })));
+
+        setKpiData(prev => ({ ...prev, totalHours, projectHours }));
       }
+
+      if (approvalsData.success) {
+        const approvals = approvalsData.data as Approval[];
+        setPendingApprovals(approvals.slice(0, 5));
+        setKpiData(prev => ({ ...prev, pendingApprovals: approvals.length }));
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
-
-    fetchData();
-  }, []);
-
-  const handleRefresh = () => {
-    startTransition(() => {
-      setLoading(true);
-      window.location.reload();
-    });
   };
 
-  const isLoading = loading || isPending;
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   return (
     <PageLayout>
@@ -120,91 +148,118 @@ export default function Dashboard() {
                 Registrar horas
               </Button>
             </Link>
-            <Button variant="secondary" icon={<Download className="h-4 w-4" />}>
-              Exportar resumen
-            </Button>
-            <Button variant="ghost" size="icon" icon={<RefreshCw className="h-4 w-4" />} onClick={handleRefresh} />
+            <Button
+              variant="subtle"
+              size="icon"
+              icon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />}
+              onClick={fetchData}
+              disabled={loading}
+            />
           </>
         }
       />
       <PageContent>
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
+        {loading ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-[132px] rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 h-64 rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+              <div className="h-64 rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="grid grid-cols-4 gap-4">
-              <Link href="/reports">
+            {/* KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <Link href="/reports" className="block">
                 <KPICard
-                  label="Horas registradas"
+                  label="Horas esta semana"
                   value={`${kpiData.totalHours}h`}
-                  trend="up"
-                  trendValue="+12%"
-                  icon={<Clock className="h-5 w-5" />}
+                  subtitle={`Semana ${kpiData.currentWeek}`}
+                  trend="vs semana anterior"
+                  accent="primary"
                 />
               </Link>
-              <Link href="/approvals">
+              <Link href="/approvals" className="block">
                 <KPICard
-                  label="Pendientes de aprobación"
+                  label="Pendientes aprobación"
                   value={kpiData.pendingApprovals}
-                  trend="down"
-                  trendValue="-3"
-                  icon={<CheckCircle className="h-5 w-5" />}
+                  subtitle={kpiData.pendingApprovals > 0 ? 'requieren acción' : 'Al día'}
+                  accent={kpiData.pendingApprovals > 0 ? 'warning' : 'success'}
                 />
               </Link>
               <KPICard
                 label="Usuarios sin registro"
                 value={kpiData.usersWithoutEntries}
-                icon={<Users className="h-5 w-5" />}
+                subtitle="esta semana"
+                accent={kpiData.usersWithoutEntries > 0 ? 'danger' : 'neutral'}
               />
               <KPICard
-                label="Periodo en curso"
-                value={`Semana ${kpiData.currentWeek}`}
-                icon={<Calendar className="h-5 w-5" />}
+                label="Semana actual"
+                value={`Sem. ${kpiData.currentWeek}`}
+                subtitle={new Date().getFullYear().toString()}
+                accent="neutral"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-6">
-              <div className="col-span-2">
+            {/* Main content row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Pending Approvals table */}
+              <div className="lg:col-span-2">
                 <Card padding="none">
-                  <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-3">
-                    <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                      Aprobaciones pendientes
-                    </h2>
-                    <Link href="/approvals">
-                      <Button variant="ghost" size="compact">
-                        Ver todas <ArrowRight className="ml-1 h-3 w-3" />
-                      </Button>
-                    </Link>
-                  </div>
-                  <div className="divide-y divide-[var(--color-border-subtle)]">
+                  <CardHeader
+                    actions={
+                      <Link href="/approvals">
+                        <Button variant="ghost" size="compact">
+                          Ver todas
+                          <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                        </Button>
+                      </Link>
+                    }
+                  >
+                    Aprobaciones pendientes
+                  </CardHeader>
+                  <div className="divide-y divide-redwood-border">
                     {pendingApprovals.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">
-                        No hay aprobaciones pendientes
+                      <div className="flex flex-col items-center justify-center py-12 gap-2">
+                        <CheckCircle className="h-8 w-8 text-redwood-green opacity-40" />
+                        <p className="text-sm text-redwood-muted">
+                          No hay aprobaciones pendientes
+                        </p>
                       </div>
                     ) : (
-                      pendingApprovals.map((item) => (
+                      pendingApprovals.map(item => (
                         <div
                           key={item.id}
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-hover-row)] cursor-pointer transition-colors"
+                          className="flex items-center gap-3 px-5 py-3 hover:bg-redwood-hover-bg transition-colors"
                         >
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-primary-light)] text-xs font-medium text-[var(--color-primary)]">
-                            {item.user.name.split(' ').map(n => n[0]).join('')}
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-oracle-sidebar text-[11px] font-semibold text-white">
+                            {item.user.name
+                              .split(' ')
+                              .map(n => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-[var(--color-text-primary)]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-redwood-text">
                                 {item.user.name}
                               </span>
                               <Badge status="pending">Pendiente</Badge>
                             </div>
-                            <span className="text-xs text-[var(--color-text-secondary)]">
+                            <span className="text-xs text-redwood-muted">
                               Semana {item.weekNumber} · {item.totalHours}h
                             </span>
                           </div>
                           <Link href="/approvals">
-                            <Button variant="primary" size="compact">Aprobar</Button>
+                            <Button variant="primary" size="compact">
+                              Aprobar
+                            </Button>
                           </Link>
                         </div>
                       ))
@@ -213,28 +268,32 @@ export default function Dashboard() {
                 </Card>
               </div>
 
-              <div className="col-span-1">
+              {/* Recent entries */}
+              <div>
                 <Card padding="none">
-                  <div className="border-b border-[var(--color-border-subtle)] px-4 py-3">
-                    <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                      Entradas recientes
-                    </h2>
-                  </div>
-                  <div className="divide-y divide-[var(--color-border-subtle)]">
+                  <CardHeader>Entradas recientes</CardHeader>
+                  <div className="divide-y divide-redwood-border">
                     {recentEntries.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">
-                        No hay entradas recientes
+                      <div className="flex flex-col items-center justify-center py-12 gap-2">
+                        <Activity className="h-8 w-8 text-redwood-muted opacity-40" />
+                        <p className="text-sm text-redwood-muted">
+                          Sin actividad esta semana
+                        </p>
                       </div>
                     ) : (
-                      recentEntries.map((entry) => (
-                        <div key={entry.id} className="px-4 py-3">
-                          <p className="text-sm text-[var(--color-text-primary)]">
-                            <span className="font-medium">{entry.project.name}</span>
-                            <span className="text-[var(--color-text-secondary)]"> · {entry.activity}</span>
+                      recentEntries.map(entry => (
+                        <div key={entry.id} className="px-5 py-3 hover:bg-redwood-hover-bg transition-colors">
+                          <p className="text-sm font-semibold text-redwood-text truncate">
+                            {entry.project?.name || 'Sin proyecto'}
                           </p>
-                          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-                            Semana {entry.weekNumber} · {entry.total}h
-                          </p>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <p className="text-xs text-redwood-muted truncate flex-1">
+                              {entry.activity || 'Sin actividad'}
+                            </p>
+                            <span className="text-xs font-bold text-redwood-primary ml-2">
+                              {entry.total}h
+                            </span>
+                          </div>
                         </div>
                       ))
                     )}
@@ -243,70 +302,112 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            {/* Charts row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Bar chart */}
               <Card>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">
-                  Horas por día
-                </h3>
-                <div className="flex items-end gap-2 h-32">
-                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie'].map((day, i) => {
-                    const heights = [65, 80, 45, 90, 70];
-                    return (
-                      <div key={day} className="flex-1 flex flex-col items-center gap-2">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted mb-1">
+                      Semana {kpiData.currentWeek}
+                    </p>
+                    <h3 className="text-base font-bold text-redwood-text">
+                      Horas por día
+                    </h3>
+                  </div>
+                  <TrendingUp className="h-4 w-4 text-redwood-muted" />
+                </div>
+                <div className="flex items-end gap-2 h-36">
+                  {weekDayBars.map(({ day, pct, hours }) => (
+                    <div key={day} className="flex-1 flex flex-col items-center gap-2">
+                      <div className="relative w-full flex items-end" style={{ height: '112px' }}>
                         <div
-                          className="w-full bg-[var(--color-primary)] rounded-t-[var(--radius-sm)] hover:bg-[var(--color-primary-hover)] cursor-pointer transition-colors group relative"
-                          style={{ height: `${heights[i]}%` }}
+                          className="w-full rounded-t-[6px] bg-redwood-primary opacity-80 hover:opacity-100 transition-opacity cursor-pointer group relative"
+                          style={{ height: `${Math.max(pct, 2)}%` }}
                         >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[var(--color-text-primary)] text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                            {heights[i] / 10}h
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:flex items-center bg-oracle-sidebar text-white text-[10px] px-2 py-1 rounded-[6px] whitespace-nowrap shadow-rw z-10">
+                            {hours}h
                           </div>
                         </div>
-                        <span className="text-xs text-[var(--color-text-secondary)]">{day}</span>
                       </div>
-                    );
-                  })}
+                      <span className="text-xs text-redwood-muted">{day}</span>
+                    </div>
+                  ))}
                 </div>
               </Card>
 
+              {/* Donut chart */}
               <Card>
-                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">
-                  Distribución por proyecto
-                </h3>
-                {Object.keys(kpiData.projectHours).length > 0 ? (
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted mb-1">
+                      Esta semana
+                    </p>
+                    <h3 className="text-base font-bold text-redwood-text">
+                      Distribución por proyecto
+                    </h3>
+                  </div>
+                  <Clock className="h-4 w-4 text-redwood-muted" />
+                </div>
+                {Object.keys(kpiData.projectHours).length > 0 && kpiData.totalHours > 0 ? (
                   <div className="flex items-center gap-6">
-                    <div className="relative w-32 h-32">
+                    <div className="relative w-28 h-28 flex-shrink-0">
                       <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-border-subtle)" strokeWidth="12" />
-                        {Object.entries(kpiData.projectHours).slice(0, 3).map(([_, hours], idx) => {
-                          const colors = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)'];
-                          const prevHours = Object.entries(kpiData.projectHours).slice(0, idx).reduce((sum, [_, h]) => sum + h, 0);
-                          const percentage = (hours / kpiData.totalHours) * 100;
-                          const offset = -(prevHours / kpiData.totalHours) * 100 * 2.51;
+                        <circle
+                          cx="50" cy="50" r="40"
+                          fill="none"
+                          stroke="var(--color-redwood-border)"
+                          strokeWidth="10"
+                        />
+                        {Object.entries(kpiData.projectHours).slice(0, 5).map(([, hours], idx) => {
+                          const prevPct = Object.entries(kpiData.projectHours)
+                            .slice(0, idx)
+                            .reduce((sum, [, h]) => sum + (h / kpiData.totalHours) * 100, 0);
+                          const pct = (hours / kpiData.totalHours) * 100;
+                          const circ = 2 * Math.PI * 40;
                           return (
-                            <circle key={idx} cx="50" cy="50" r="40" fill="none" stroke={colors[idx]} strokeWidth="12" strokeDasharray={`${percentage * 2.51} ${100 - percentage * 2.51}`} strokeDashoffset={offset} />
+                            <circle
+                              key={idx}
+                              cx="50" cy="50" r="40"
+                              fill="none"
+                              stroke={CHART_COLORS[idx]}
+                              strokeWidth="10"
+                              strokeDasharray={`${(pct / 100) * circ} ${circ}`}
+                              strokeDashoffset={-(prevPct / 100) * circ}
+                            />
                           );
                         })}
                       </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-lg font-semibold">{kpiData.totalHours}h</span>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-base font-bold text-redwood-text">
+                          {kpiData.totalHours}h
+                        </span>
+                        <span className="text-[10px] text-redwood-muted">total</span>
                       </div>
                     </div>
-                    <div className="flex-1 space-y-2">
-                      {Object.entries(kpiData.projectHours).map(([name, hours], idx) => {
-                        const colors = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)'];
-                        return (
+                    <div className="flex-1 space-y-2 min-w-0">
+                      {Object.entries(kpiData.projectHours)
+                        .slice(0, 5)
+                        .map(([name, hours], idx) => (
                           <div key={name} className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ background: colors[idx % 3] }} />
-                            <span className="text-sm text-[var(--color-text-secondary)] flex-1 truncate">{name}</span>
-                            <span className="text-sm font-medium">{hours}h</span>
+                            <div
+                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              style={{ background: CHART_COLORS[idx] }}
+                            />
+                            <span className="text-xs text-redwood-muted flex-1 truncate">
+                              {name}
+                            </span>
+                            <span className="text-xs font-bold text-redwood-text">
+                              {hours}h
+                            </span>
                           </div>
-                        );
-                      })}
+                        ))}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-[var(--color-text-secondary)] text-center py-8">
-                    No hay datos de proyectos
+                  <div className="flex flex-col items-center justify-center py-8 gap-2">
+                    <Activity className="h-8 w-8 text-redwood-muted opacity-40" />
+                    <p className="text-sm text-redwood-muted">Sin datos esta semana</p>
                   </div>
                 )}
               </Card>

@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header, PageLayout, PageContent } from '@/components/layout';
-import { Button, Card, Badge } from '@/components/ui';
-import { Plus, Edit2, Trash2, Eye, Calendar, DollarSign, Users, Clock, TrendingUp, AlertTriangle, CheckCircle, Bell } from 'lucide-react';
+import { Button, Card, CardHeader, Badge, KPICard } from '@/components/ui';
+import { Plus, Edit2, Trash2, Eye, Calendar, DollarSign, Clock, TrendingUp, AlertTriangle, CheckCircle, Bell, Building2, X, Search } from 'lucide-react';
 import { PermissionGate } from '@/hooks/usePermissions';
 
 interface Project {
@@ -48,12 +49,23 @@ interface ProjectAlert {
   endDate: string;
 }
 
+interface Client {
+  id: string;
+  name: string;
+}
+
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showClientModal, setShowClientModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [newClientName, setNewClientName] = useState('');
   const [newProject, setNewProject] = useState({
     name: '',
     code: '',
@@ -71,14 +83,47 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
+    fetchClients();
   }, []);
+
+  const fetchClients = async () => {
+    try {
+      const res = await fetch('/api/clients');
+      const data = await res.json();
+      if (data.success) {
+        setClients(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+    }
+  };
+
+  const handleCreateClient = async () => {
+    if (!newClientName.trim()) return;
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newClientName }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setClients([...clients, { id: data.data.id, name: newClientName }]);
+        setNewProject({ ...newProject, client: newClientName });
+        setShowClientModal(false);
+        setNewClientName('');
+      }
+    } catch (error) {
+      console.error('Error creating client:', error);
+    }
+  };
 
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/projects?withCosts=true');
       const data = await res.json();
       if (data.success) {
-        const projectsWithProgress = data.data.map((p: any) => ({
+        const projectsWithProgress = data.data.map((p: Project) => ({
           ...p,
           progress: calculateProgress(p),
           status: p.status || 'active',
@@ -93,7 +138,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const calculateProgress = (project: any): number => {
+  const calculateProgress = (project: Project): number => {
     if (!project.actualHours || !project.budgetHours) return 0;
     return Math.min(100, Math.round((project.actualHours / project.budgetHours) * 100));
   };
@@ -197,6 +242,64 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleViewProject = (projectId: string) => {
+    router.push(`/projects/${projectId}`);
+  };
+
+  const handleEditProject = (project: Project) => {
+    setEditingProject(project);
+    setNewProject({
+      name: project.name,
+      code: project.code,
+      client: project.client || '',
+      description: project.description || '',
+      billable: project.billable,
+      status: project.status,
+      startDate: project.startDate || new Date().toISOString().split('T')[0],
+      endDate: project.endDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      budget: project.budget || 0,
+      budgetHours: project.budgetHours || 0,
+      hourlyRate: project.hourlyRate || 100,
+      currency: project.currency || 'USD',
+    });
+    setShowModal(true);
+  };
+
+  const handleUpdateProject = async () => {
+    if (!editingProject) return;
+    try {
+      await fetch(`/api/projects/${editingProject.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProject),
+      });
+      setShowModal(false);
+      setEditingProject(null);
+      setNewProject({
+        name: '', code: '', client: '', description: '', billable: true,
+        status: 'active', startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        budget: 0, budgetHours: 0, hourlyRate: 100, currency: 'USD',
+      });
+      fetchProjects();
+    } catch (error) {
+      console.error('Error updating project:', error);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!deletingProject) return;
+    try {
+      await fetch(`/api/projects/${deletingProject.id}`, {
+        method: 'DELETE',
+      });
+      setDeletingProject(null);
+      fetchProjects();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active': return <Badge severity="success">Activo</Badge>;
@@ -205,6 +308,12 @@ export default function ProjectsPage() {
       case 'archived': return <Badge severity="error">Archivado</Badge>;
       default: return null;
     }
+  };
+
+  const fmtDate = (d: string) => {
+    if (!d) return '—';
+    const [y, m, day] = d.split('-');
+    return `${day}/${m}/${y}`;
   };
 
   const getProgressBadge = (status: 'on_track' | 'at_risk' | 'delayed' | 'completed') => {
@@ -220,8 +329,18 @@ export default function ProjectsPage() {
     return (
       <PageLayout>
         <Header title="Proyectos" breadcrumbs={[{ label: 'TimeOS' }, { label: 'Proyectos' }]} />
-        <PageContent className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
+        <PageContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-24 rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+            ))}
+          </div>
+          <div className="h-10 w-64 rounded-[14px] animate-pulse bg-redwood-solid-bg mb-4" />
+          <div className="space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-14 rounded-[14px] animate-pulse bg-redwood-solid-bg" />
+            ))}
+          </div>
         </PageContent>
       </PageLayout>
     );
@@ -244,61 +363,36 @@ export default function ProjectsPage() {
         {/* Summary Cards */}
         {summary && (
           <div className="grid grid-cols-5 gap-4 mb-6">
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-500 rounded-lg"><TrendingUp className="h-6 w-6 text-white" /></div>
-                <div><p className="text-sm text-blue-700">Proyectos Activos</p><p className="text-2xl font-bold text-blue-900">{summary.active}</p></div>
-              </div>
-            </Card>
-            <Card className="bg-gradient-to-br from-green-50 to-green-100">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-green-500 rounded-lg"><CheckCircle className="h-6 w-6 text-white" /></div>
-                <div><p className="text-sm text-green-700">Completados</p><p className="text-2xl font-bold text-green-900">{summary.completed}</p></div>
-              </div>
-            </Card>
-            <Card className="bg-gradient-to-br from-red-50 to-red-100">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-red-500 rounded-lg"><AlertTriangle className="h-6 w-6 text-white" /></div>
-                <div><p className="text-sm text-red-700">En Riesgo</p><p className="text-2xl font-bold text-red-900">{summary.atRisk}</p></div>
-              </div>
-            </Card>
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-orange-500 rounded-lg"><Clock className="h-6 w-6 text-white" /></div>
-                <div><p className="text-sm text-orange-700">Cerca deadline</p><p className="text-2xl font-bold text-orange-900">{summary.nearDeadline}</p></div>
-              </div>
-            </Card>
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-purple-500 rounded-lg"><DollarSign className="h-6 w-6 text-white" /></div>
-                <div><p className="text-sm text-purple-700">Presupuesto Total</p><p className="text-2xl font-bold text-purple-900">${summary.totalBudget.toLocaleString()}</p></div>
-              </div>
-            </Card>
+            <KPICard label="Proyectos Activos" value={summary.active} accent="primary" />
+            <KPICard label="Completados" value={summary.completed} accent="success" />
+            <KPICard label="En Riesgo" value={summary.atRisk} accent="danger" />
+            <KPICard label="Cerca Deadline" value={summary.nearDeadline} accent="warning" />
+            <KPICard label="Presupuesto Total" value={`$${summary.totalBudget.toLocaleString()}`} accent="neutral" />
           </div>
         )}
 
         {/* Alertas de Proyectos Cercanos a Deadline */}
         {getProjectAlerts().length > 0 && (
-          <Card className="mb-6 bg-amber-50 border-amber-200">
+          <Card className="mb-6 border-badge-strong-warning-bg/20 bg-badge-subtle-warning-bg">
             <div className="flex items-center gap-2 mb-3">
               <Bell className="h-5 w-5 text-amber-600" />
               <h3 className="text-sm font-semibold text-amber-800">Alertas de Proyectos</h3>
             </div>
             <div className="grid grid-cols-3 gap-3">
               {getProjectAlerts().slice(0, 6).map(alert => (
-                <div key={alert.id} className={`p-3 rounded-lg border ${alert.daysLeft <= 3 ? 'bg-red-100 border-red-200' : alert.daysLeft <= 7 ? 'bg-orange-100 border-orange-200' : 'bg-amber-100 border-amber-200'}`}>
+                <div key={alert.id} className="bg-redwood-surface-soft rounded-[10px] border border-redwood-border p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">{alert.name}</span>
+                    <span className="text-sm font-medium text-redwood-muted">{alert.name}</span>
                     <span className={`text-xs font-bold ${alert.daysLeft <= 3 ? 'text-red-600' : alert.daysLeft <= 7 ? 'text-orange-600' : 'text-amber-600'}`}>
                       {alert.daysLeft === 0 ? 'Hoy' : alert.daysLeft === 1 ? '1 día' : `${alert.daysLeft} días`}
                     </span>
                   </div>
                   <div className="mt-2">
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-500 rounded-full" style={{ width: `${alert.progress}%` }} />
+                      <div className="flex-1 h-2 bg-redwood-solid-bg rounded-full overflow-hidden">
+                        <div className="h-full bg-redwood-warning rounded-full" style={{ width: `${alert.progress}%` }} />
                       </div>
-                      <span className="text-xs text-gray-600">{alert.progress}%</span>
+                      <span className="text-xs text-redwood-muted">{alert.progress}%</span>
                     </div>
                   </div>
                 </div>
@@ -309,62 +403,91 @@ export default function ProjectsPage() {
 
         {/* Projects Table */}
         <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-redwood-muted" />
+              <input
+                type="text"
+                placeholder="Buscar proyecto o cliente..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-page text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
+              />
+            </div>
+            {searchQuery && (
+              <span className="text-sm text-redwood-muted">
+                {projects.filter(p =>
+                  p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (p.client || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  p.code.toLowerCase().includes(searchQuery.toLowerCase())
+                ).length} resultado(s)
+              </span>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[var(--color-border-subtle)]">
-                  <th className="text-left py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Proyecto</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Cliente</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Estado</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Avance</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Estado Tiempo</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Presupuesto</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Fechas</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-[var(--color-text-secondary)]">Acciones</th>
+                <tr className="border-b border-redwood-border">
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Proyecto</th>
+                  <th className="text-left py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Cliente</th>
+                  <th className="text-center py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Estado</th>
+                  <th className="text-center py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Avance</th>
+                  <th className="text-center py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Estado Tiempo</th>
+                  <th className="text-right py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Presupuesto</th>
+                  <th className="text-right py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Fechas</th>
+                  <th className="text-right py-3 px-4 text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--color-border-subtle)]">
-                {projects.map(project => {
+              <tbody className="divide-y divide-redwood-border">
+                {projects.filter(p =>
+                  !searchQuery ||
+                  p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (p.client || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  p.code.toLowerCase().includes(searchQuery.toLowerCase())
+                ).map(project => {
                   const progressStatus = calculateStatus(project);
                   return (
-                    <tr key={project.id} className="hover:bg-[var(--color-hover-row)]">
+                    <tr key={project.id} className="hover:bg-redwood-hover-bg">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)] font-bold text-sm">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-primary-light)] text-redwood-primary font-bold text-sm">
                             {project.code.slice(0, 2)}
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-[var(--color-text-primary)]">{project.name}</div>
-                            <div className="text-xs text-[var(--color-text-secondary)]">{project.code}</div>
+                            <div className="text-sm font-medium text-redwood-text">{project.name}</div>
+                            <div className="text-xs text-redwood-muted">{project.code}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-sm text-[var(--color-text-secondary)]">{project.client || '—'}</td>
+                      <td className="py-3 px-4 text-sm text-redwood-muted">{project.client || '—'}</td>
                       <td className="py-3 px-4 text-center">{getStatusBadge(project.status)}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-[var(--color-primary)] rounded-full" style={{ width: `${project.progress}%` }} />
+                          <div className="flex-1 h-2 bg-redwood-solid-bg rounded-full overflow-hidden">
+                            <div className="h-full bg-redwood-primary rounded-full" style={{ width: `${project.progress}%` }} />
                           </div>
                           <span className="text-xs font-medium w-10">{project.progress}%</span>
                         </div>
                       </td>
                       <td className="py-3 px-4 text-center">{getProgressBadge(progressStatus)}</td>
-                      <td className="py-3 px-4 text-sm text-right text-[var(--color-text-primary)]">
+                      <td className="py-3 px-4 text-sm text-right text-redwood-text">
                         ${(project.budget || 0).toLocaleString()}
                         {project.baselineBudget && (
-                          <div className="text-xs text-[var(--color-text-secondary)]">Base: ${project.baselineBudget.toLocaleString()}</div>
+                          <div className="text-xs text-redwood-muted">Base: ${project.baselineBudget.toLocaleString()}</div>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-sm text-right text-[var(--color-text-secondary)]">
-                        {project.startDate} - {project.endDate}
+                      <td className="py-3 px-4 text-sm text-right text-redwood-muted whitespace-nowrap">
+                        {fmtDate(project.startDate)} – {fmtDate(project.endDate)}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <PermissionGate permission="projects:update">
-                          <Button variant="ghost" size="icon" onClick={() => handleSetBaseline(project)} title="Establecer Línea Base">
-                            <Calendar className="h-4 w-4" />
-                          </Button>
-                        </PermissionGate>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" icon={<Eye className="h-4 w-4" />} onClick={() => handleViewProject(project.id)} title="Ver Detalles" />
+                          <PermissionGate permission="projects:update">
+                            <Button variant="ghost" size="icon" icon={<Edit2 className="h-4 w-4" />} onClick={() => handleEditProject(project)} title="Editar" />
+                            <Button variant="subtle" size="icon" icon={<Calendar className="h-4 w-4" />} onClick={() => handleSetBaseline(project)} title="Establecer Línea Base" />
+                            <Button variant="ghost" size="icon" icon={<Trash2 className="h-4 w-4 text-red-500" />} onClick={() => setDeletingProject(project)} title="Eliminar" />
+                          </PermissionGate>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -374,54 +497,80 @@ export default function ProjectsPage() {
           </div>
         </Card>
 
-        {/* Create Modal */}
+        {/* Create/Edit Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-semibold mb-4">Crear Nuevo Proyecto</h3>
+              <h3 className="text-lg font-semibold mb-4">
+                {editingProject ? 'Editar Proyecto' : 'Crear Nuevo Proyecto'}
+              </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Nombre del Proyecto</label>
-                  <input type="text" className="w-full border rounded px-3 py-2" value={newProject.name} onChange={e => setNewProject({ ...newProject, name: e.target.value })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Nombre del Proyecto</label>
+                  <input type="text" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.name} onChange={e => setNewProject({ ...newProject, name: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Código</label>
-                  <input type="text" className="w-full border rounded px-3 py-2" value={newProject.code} onChange={e => setNewProject({ ...newProject, code: e.target.value })} placeholder="PROJ-001" />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Código</label>
+                  <input type="text" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.code} onChange={e => setNewProject({ ...newProject, code: e.target.value })} placeholder="PROJ-001" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Cliente</label>
-                  <input type="text" className="w-full border rounded px-3 py-2" value={newProject.client} onChange={e => setNewProject({ ...newProject, client: e.target.value })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">
+                    <Building2 className="inline h-4 w-4 mr-1" />
+                    Cliente
+                  </label>
+                  {clients.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
+                        value={newProject.client}
+                        onChange={e => setNewProject({ ...newProject, client: e.target.value })}
+                      >
+                        <option value="">Seleccionar cliente...</option>
+                        {clients.map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                      <Button variant="subtle" size="icon" icon={<Plus className="h-4 w-4" />} onClick={() => setShowClientModal(true)} title="Agregar cliente" />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-sm text-amber-600">No hay clientes registrados</p>
+                      <Button variant="subtle" size="compact" icon={<Plus className="h-4 w-4" />} onClick={() => setShowClientModal(true)}>
+                        Crear primer cliente
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Estado</label>
-                  <select className="w-full border rounded px-3 py-2" value={newProject.status} onChange={e => setNewProject({ ...newProject, status: e.target.value as any })}>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Estado</label>
+                  <select className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.status} onChange={e => setNewProject({ ...newProject, status: e.target.value as 'active' | 'on_hold' | 'completed' | 'archived' })}>
                     <option value="active">Activo</option>
                     <option value="on_hold">En Pausa</option>
                     <option value="completed">Completado</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Fecha Inicio</label>
-                  <input type="date" className="w-full border rounded px-3 py-2" value={newProject.startDate} onChange={e => setNewProject({ ...newProject, startDate: e.target.value })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Fecha Inicio</label>
+                  <input type="date" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.startDate} onChange={e => setNewProject({ ...newProject, startDate: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Fecha Fin</label>
-                  <input type="date" className="w-full border rounded px-3 py-2" value={newProject.endDate} onChange={e => setNewProject({ ...newProject, endDate: e.target.value })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Fecha Fin</label>
+                  <input type="date" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.endDate} onChange={e => setNewProject({ ...newProject, endDate: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Presupuesto ($)</label>
-                  <input type="number" className="w-full border rounded px-3 py-2" value={newProject.budget} onChange={e => setNewProject({ ...newProject, budget: Number(e.target.value) })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Presupuesto ($)</label>
+                  <input type="number" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.budget} onChange={e => setNewProject({ ...newProject, budget: Number(e.target.value) })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Horas Presupuestadas</label>
-                  <input type="number" className="w-full border rounded px-3 py-2" value={newProject.budgetHours} onChange={e => setNewProject({ ...newProject, budgetHours: Number(e.target.value) })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Horas Presupuestadas</label>
+                  <input type="number" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.budgetHours} onChange={e => setNewProject({ ...newProject, budgetHours: Number(e.target.value) })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Tarifa/Hora ($)</label>
-                  <input type="number" className="w-full border rounded px-3 py-2" value={newProject.hourlyRate} onChange={e => setNewProject({ ...newProject, hourlyRate: Number(e.target.value) })} />
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Tarifa/Hora ($)</label>
+                  <input type="number" className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors" value={newProject.hourlyRate} onChange={e => setNewProject({ ...newProject, hourlyRate: Number(e.target.value) })} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Facturable</label>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">Facturable</label>
                   <label className="flex items-center gap-2 mt-2">
                     <input type="checkbox" checked={newProject.billable} onChange={e => setNewProject({ ...newProject, billable: e.target.checked })} />
                     <span>El proyecto es facturable</span>
@@ -429,8 +578,67 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
-                <Button variant="primary" onClick={handleCreateProject}>Crear Proyecto</Button>
+                <Button variant="subtle" onClick={() => {
+                  setShowModal(false);
+                  setEditingProject(null);
+                }}>Cancelar</Button>
+                <Button variant="primary" onClick={editingProject ? handleUpdateProject : handleCreateProject}>
+                  {editingProject ? 'Guardar Cambios' : 'Crear Proyecto'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Create Client Modal */}
+        {showClientModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold">Nuevo Cliente</h3>
+                <Button variant="subtle" size="icon" icon={<X className="h-4 w-4" />} onClick={() => setShowClientModal(false)} />
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[13px] font-bold text-redwood-text mb-1.5">
+                    <Building2 className="inline h-4 w-4 mr-1" />
+                    Nombre del Cliente *
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
+                    value={newClientName}
+                    onChange={e => setNewClientName(e.target.value)}
+                    placeholder="Nombre de la empresa"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button variant="subtle" onClick={() => setShowClientModal(false)}>Cancelar</Button>
+                <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={handleCreateClient}>
+                  Crear Cliente
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deletingProject && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Confirmar Eliminación</h3>
+              <p className="text-redwood-muted mb-6">
+                ¿Estás seguro de que deseas eliminar el proyecto "{deletingProject.name}"? Esta acción eliminará todas las fases, tareas y registros asociados.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="subtle" onClick={() => setDeletingProject(null)}>
+                  Cancelar
+                </Button>
+                <Button variant="danger" onClick={handleDeleteProject}>
+                  Eliminar
+                </Button>
               </div>
             </Card>
           </div>
