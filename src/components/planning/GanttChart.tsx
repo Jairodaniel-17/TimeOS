@@ -47,9 +47,16 @@ const CELL_W: Record<ViewMode, number> = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────
-function parseDate(s: string): Date {
+// Parse 'YYYY-MM-DD' as a LOCAL date (not UTC). `new Date('YYYY-MM-DD')`
+// parses as UTC, which shifts the day backward in negative-offset timezones.
+function parseDate(s: string | undefined | null): Date | null {
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
   const d = new Date(s);
-  return isNaN(d.getTime()) ? new Date() : d;
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function floorDay(d: Date): Date {
@@ -64,6 +71,11 @@ function addDays(d: Date, n: number): Date {
 
 function diffDays(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function clampPct(n: number | undefined): number {
+  if (typeof n !== 'number' || isNaN(n)) return 0;
+  return Math.max(0, Math.min(100, n));
 }
 
 function daysPerCell(mode: ViewMode): number {
@@ -132,8 +144,13 @@ function buildGroups(cells: Date[], cw: number, mode: ViewMode) {
 }
 
 // ── Component ─────────────────────────────────────────────────
+// Format a Date back to 'YYYY-MM-DD' using LOCAL components, so a date
+// produced by local-time math round-trips without a UTC day-shift.
 function fmtDate(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblClick, onDateChange }: GanttChartProps) {
@@ -151,13 +168,25 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
   const [dragDx, setDragDx] = useState(0);
   const today = useMemo(() => floorDay(new Date()), []);
 
-  // ── Date range ────────────────────────────────────────────
+  // ── Date range (data-driven, always includes today) ──────
   const { minDate, maxDate } = useMemo(() => {
-    if (!tasks.length) return { minDate: addDays(today, -14), maxDate: addDays(today, 45) };
-    const starts = tasks.map(t => parseDate(t.startDate));
-    const ends   = tasks.map(t => parseDate(t.endDate));
-    const min = new Date(Math.min(...starts.map(d => d.getTime())));
-    const max = new Date(Math.max(...ends.map(d => d.getTime())));
+    const times: number[] = [];
+    for (const t of tasks) {
+      const s = parseDate(t.startDate);
+      const e = parseDate(t.endDate);
+      if (s) times.push(s.getTime());
+      if (e) times.push(e.getTime());
+      const bs = parseDate(t.baselineStart);
+      const be = parseDate(t.baselineEnd);
+      if (bs) times.push(bs.getTime());
+      if (be) times.push(be.getTime());
+    }
+    // No valid dates at all → window centred on today.
+    if (!times.length) return { minDate: addDays(today, -14), maxDate: addDays(today, 45) };
+    // Always include today so the "today" marker stays in view.
+    times.push(today.getTime());
+    const min = new Date(Math.min(...times));
+    const max = new Date(Math.max(...times));
     return { minDate: addDays(floorDay(min), -7), maxDate: addDays(floorDay(max), 14) };
   }, [tasks, today]);
 
@@ -180,6 +209,19 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
 
   const hasChildren = useCallback((id: string) => tasks.some(t => t.parentId === id), [tasks]);
 
+  // Start a drag, resolving safe start/end dates (tolerates a missing endpoint).
+  const beginDrag = useCallback((task: GanttTask, clientX: number) => {
+    const s = parseDate(task.startDate);
+    const e = parseDate(task.endDate);
+    if (!s && !e) return; // nothing to drag
+    setDragging({
+      taskId: task.id,
+      startX: clientX,
+      origStart: s ?? e!,
+      origEnd: e ?? s!,
+    });
+  }, []);
+
   const toggleCollapse = (id: string) => {
     setCollapsed(prev => {
       const next = new Set(prev);
@@ -189,10 +231,17 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
   };
 
   // ── Bar geometry ──────────────────────────────────────────
-  const barGeo = useCallback((task: GanttTask) => {
-    const s = floorDay(parseDate(task.startDate));
-    const e = floorDay(parseDate(task.endDate));
+  // Returns null when the task has no valid start/end so callers can skip it.
+  const barGeo = useCallback((task: GanttTask): { x: number; w: number } | null => {
+    const sRaw = parseDate(task.startDate);
+    const eRaw = parseDate(task.endDate);
+    if (!sRaw && !eRaw) return null;
+    // Tolerate a single missing endpoint by treating it as a 1-day task.
+    const s = floorDay(sRaw ?? eRaw!);
+    let e = floorDay(eRaw ?? sRaw!);
+    if (e < s) e = s; // guard inverted ranges
     const x = (diffDays(minDate, s) / step) * cw;
+    // start==end → 1 day; enforce a minimum visible width for tiny bars.
     const w = Math.max(((diffDays(s, e) + 1) / step) * cw, task.isMilestone ? 14 : 6);
     return { x, w };
   }, [minDate, step, cw]);
@@ -357,7 +406,7 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
                   </span>
 
                   {/* Progress */}
-                  <span className="text-[10px] text-redwood-muted flex-shrink-0">{task.progress}%</span>
+                  <span className="text-[10px] text-redwood-muted flex-shrink-0">{clampPct(task.progress)}%</span>
                 </div>
               );
             })}
@@ -419,9 +468,11 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
 
             {/* ── Baseline bars ─────────────────────────────── */}
             {visible.map((task, idx) => {
-              if (!task.baselineStart || !task.baselineEnd) return null;
-              const bs = floorDay(parseDate(task.baselineStart));
-              const be = floorDay(parseDate(task.baselineEnd));
+              const bsRaw = parseDate(task.baselineStart);
+              const beRaw = parseDate(task.baselineEnd);
+              if (!bsRaw || !beRaw) return null;
+              const bs = floorDay(bsRaw);
+              const be = floorDay(beRaw);
               const bx = (diffDays(minDate, bs) / step) * cw;
               const bw = Math.max(((diffDays(bs, be) + 1) / step) * cw, 4);
               return (
@@ -442,7 +493,9 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
 
             {/* ── Task bars ─────────────────────────────────── */}
             {visible.map((task, idx) => {
-              const { x, w } = barGeo(task);
+              const geo = barGeo(task);
+              if (!geo) return null; // skip tasks with no valid dates
+              const { x, w } = geo;
               const isDraggingThis = dragging?.taskId === task.id;
               const barX = isDraggingThis ? x + dragDx : x;
               const top = idx * ROW_H;
@@ -461,7 +514,7 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
                     style={{ left: cx - r - 1, top: cy - r - 1, width: (r + 1) * 2, height: (r + 1) * 2, overflow: 'visible' }}
                     onClick={() => onTaskClick?.(task)}
                     onDoubleClick={() => onTaskDblClick?.(task)}
-                    onMouseDown={e => { e.preventDefault(); setDragging({ taskId: task.id, startX: e.clientX, origStart: parseDate(task.startDate), origEnd: parseDate(task.endDate) }); }}
+                    onMouseDown={e => { e.preventDefault(); beginDrag(task, e.clientX); }}
                   >
                     <polygon
                       points={`${r},0 ${r*2},${r} ${r},${r*2} 0,${r}`}
@@ -493,10 +546,10 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => onTaskClick?.(task)}
                     onDoubleClick={() => onTaskDblClick?.(task)}
-                    onMouseDown={e => { e.preventDefault(); setDragging({ taskId: task.id, startX: e.clientX, origStart: parseDate(task.startDate), origEnd: parseDate(task.endDate) }); }}
+                    onMouseDown={e => { e.preventDefault(); beginDrag(task, e.clientX); }}
                     title={`${task.name} · ${task.progress}%`}
                   >
-                    <div style={{ width: `${task.progress}%`, height: '100%', backgroundColor: 'rgba(255,255,255,0.28)' }} />
+                    <div style={{ width: `${clampPct(task.progress)}%`, height: '100%', backgroundColor: 'rgba(255,255,255,0.28)' }} />
                     {w > 48 && (
                       <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium text-white truncate">
                         {task.name}
@@ -526,13 +579,13 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
                   onMouseLeave={() => setHovered(null)}
                   onClick={() => onTaskClick?.(task)}
                   onDoubleClick={() => onTaskDblClick?.(task)}
-                  onMouseDown={e => { e.preventDefault(); setDragging({ taskId: task.id, startX: e.clientX, origStart: parseDate(task.startDate), origEnd: parseDate(task.endDate) }); }}
+                  onMouseDown={e => { e.preventDefault(); beginDrag(task, e.clientX); }}
                   title={`${task.name} · ${task.progress}% · ${task.status}`}
                 >
                   {/* Progress fill */}
                   <div
                     style={{
-                      width: `${task.progress}%`,
+                      width: `${clampPct(task.progress)}%`,
                       height: '100%',
                       backgroundColor: col.progress,
                       opacity: 0.38,
@@ -569,8 +622,11 @@ export function GanttChart({ tasks, viewMode = 'Week', onTaskClick, onTaskDblCli
                   const fromIdx = visible.findIndex(t => t.id === depId);
                   if (fromIdx === -1) return null;
                   const from = visible[fromIdx];
-                  const { x: fx, w: fw } = barGeo(from);
-                  const { x: tx } = barGeo(task);
+                  const fromGeo = barGeo(from);
+                  const toGeo = barGeo(task);
+                  if (!fromGeo || !toGeo) return null;
+                  const { x: fx, w: fw } = fromGeo;
+                  const { x: tx } = toGeo;
                   const x1 = fx + fw;
                   const y1 = fromIdx * ROW_H + ROW_H / 2;
                   const x2 = tx;

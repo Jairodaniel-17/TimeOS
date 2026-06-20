@@ -47,6 +47,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMounted(true);
     setUser(loadUserFromStorage());
     setIsLoading(false);
+
+    // Keep the client session in sync with the server JWT cookie.
+    // If any API call returns 401 (e.g. the 8h cookie expired while the
+    // localStorage session persisted), clear the session and send the user
+    // back to login instead of showing a misleading "failed to load" error.
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      try {
+        const input = args[0];
+        const url = typeof input === 'string'
+          ? input
+          : input instanceof Request ? input.url : String(input);
+        if (
+          response.status === 401 &&
+          url.includes('/api/') &&
+          !url.includes('/api/auth/login')
+        ) {
+          localStorage.removeItem('timeos_user');
+          setUser(null);
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login?expired=1';
+          }
+        }
+      } catch {
+        // never let the interceptor break a request
+      }
+      return response;
+    };
+    return () => { window.fetch = originalFetch; };
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {

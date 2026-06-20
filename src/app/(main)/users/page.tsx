@@ -26,6 +26,7 @@ export default function UsersPage() {
   const [newUser, setNewUser] = useState({ name: '', email: '', role: 'member', password: '' });
   const [editForm, setEditForm] = useState({ name: '', email: '', role: 'member', isActive: true });
   const [newPassword, setNewPassword] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -46,6 +47,8 @@ export default function UsersPage() {
   };
 
   const handleCreateUser = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -60,11 +63,14 @@ export default function UsersPage() {
       }
     } catch (error) {
       console.error('Error creating user:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUpdateUser = async () => {
-    if (!editingUser) return;
+    if (!editingUser || saving) return;
+    setSaving(true);
     try {
       const res = await fetch('/api/users', {
         method: 'PUT',
@@ -79,11 +85,14 @@ export default function UsersPage() {
       }
     } catch (error) {
       console.error('Error updating user:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleResetPassword = async () => {
-    if (!resetingUser || !newPassword) return;
+    if (!resetingUser || !newPassword || saving) return;
+    setSaving(true);
     try {
       const res = await fetch('/api/users', {
         method: 'PUT',
@@ -98,6 +107,8 @@ export default function UsersPage() {
       }
     } catch (error) {
       console.error('Error resetting password:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -233,7 +244,7 @@ export default function UsersPage() {
                   <select
                     className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={newUser.role}
-                    onChange={e => setNewUser({ ...newUser, role: e.target.value as any })}
+                    onChange={e => setNewUser({ ...newUser, role: e.target.value as 'admin' | 'manager' | 'member' })}
                   >
                     <option value="member">Member</option>
                     <option value="manager">Manager</option>
@@ -242,8 +253,8 @@ export default function UsersPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="subtle" onClick={() => setShowCreateModal(false)}>Cancelar</Button>
-                <Button variant="primary" onClick={handleCreateUser}>Crear</Button>
+                <Button variant="subtle" disabled={saving} onClick={() => setShowCreateModal(false)}>Cancelar</Button>
+                <Button variant="primary" loading={saving} onClick={handleCreateUser}>{saving ? 'Creando…' : 'Crear'}</Button>
               </div>
             </Card>
           </div>
@@ -284,7 +295,7 @@ export default function UsersPage() {
                   <select
                     className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
                     value={editForm.role}
-                    onChange={e => setEditForm({ ...editForm, role: e.target.value as any })}
+                    onChange={e => setEditForm({ ...editForm, role: e.target.value as 'admin' | 'manager' | 'member' })}
                   >
                     <option value="member">Member - Acceso básico</option>
                     <option value="manager">Manager - Gestión de proyectos</option>
@@ -322,9 +333,9 @@ export default function UsersPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="subtle" onClick={() => setShowEditModal(false)}>Cancelar</Button>
-                <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={handleUpdateUser}>
-                  Guardar Cambios
+                <Button variant="subtle" disabled={saving} onClick={() => setShowEditModal(false)}>Cancelar</Button>
+                <Button variant="primary" icon={<Save className="h-4 w-4" />} loading={saving} onClick={handleUpdateUser}>
+                  {saving ? 'Guardando…' : 'Guardar Cambios'}
                 </Button>
               </div>
             </Card>
@@ -352,9 +363,9 @@ export default function UsersPage() {
                 />
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="subtle" onClick={() => { setShowResetModal(false); setNewPassword(''); }}>Cancelar</Button>
-                <Button variant="primary" icon={<KeyRound className="h-4 w-4" />} onClick={handleResetPassword} disabled={newPassword.length < 6}>
-                  Resetear
+                <Button variant="subtle" disabled={saving} onClick={() => { setShowResetModal(false); setNewPassword(''); }}>Cancelar</Button>
+                <Button variant="primary" icon={<KeyRound className="h-4 w-4" />} onClick={handleResetPassword} loading={saving} disabled={newPassword.length < 6}>
+                  {saving ? 'Reseteando…' : 'Resetear'}
                 </Button>
               </div>
             </Card>

@@ -66,6 +66,9 @@ export default function ProjectsPage() {
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newClientName, setNewClientName] = useState('');
+  const [savingProject, setSavingProject] = useState(false);
+  const [deletingProjectInFlight, setDeletingProjectInFlight] = useState(false);
+  const [savingClient, setSavingClient] = useState(false);
   const [newProject, setNewProject] = useState({
     name: '',
     code: '',
@@ -99,7 +102,8 @@ export default function ProjectsPage() {
   };
 
   const handleCreateClient = async () => {
-    if (!newClientName.trim()) return;
+    if (!newClientName.trim() || savingClient) return;
+    setSavingClient(true);
     try {
       const res = await fetch('/api/clients', {
         method: 'POST',
@@ -115,6 +119,8 @@ export default function ProjectsPage() {
       }
     } catch (error) {
       console.error('Error creating client:', error);
+    } finally {
+      setSavingClient(false);
     }
   };
 
@@ -202,6 +208,8 @@ export default function ProjectsPage() {
   };
 
   const handleCreateProject = async () => {
+    if (savingProject) return;
+    setSavingProject(true);
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -221,6 +229,8 @@ export default function ProjectsPage() {
       }
     } catch (error) {
       console.error('Error creating project:', error);
+    } finally {
+      setSavingProject(false);
     }
   };
 
@@ -266,7 +276,8 @@ export default function ProjectsPage() {
   };
 
   const handleUpdateProject = async () => {
-    if (!editingProject) return;
+    if (!editingProject || savingProject) return;
+    setSavingProject(true);
     try {
       await fetch(`/api/projects/${editingProject.id}`, {
         method: 'PUT',
@@ -284,11 +295,14 @@ export default function ProjectsPage() {
       fetchProjects();
     } catch (error) {
       console.error('Error updating project:', error);
+    } finally {
+      setSavingProject(false);
     }
   };
 
   const handleDeleteProject = async () => {
-    if (!deletingProject) return;
+    if (!deletingProject || deletingProjectInFlight) return;
+    setDeletingProjectInFlight(true);
     try {
       await fetch(`/api/projects/${deletingProject.id}`, {
         method: 'DELETE',
@@ -297,6 +311,8 @@ export default function ProjectsPage() {
       fetchProjects();
     } catch (error) {
       console.error('Error deleting project:', error);
+    } finally {
+      setDeletingProjectInFlight(false);
     }
   };
 
@@ -578,12 +594,12 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="subtle" onClick={() => {
+                <Button variant="subtle" disabled={savingProject} onClick={() => {
                   setShowModal(false);
                   setEditingProject(null);
                 }}>Cancelar</Button>
-                <Button variant="primary" onClick={editingProject ? handleUpdateProject : handleCreateProject}>
-                  {editingProject ? 'Guardar Cambios' : 'Crear Proyecto'}
+                <Button variant="primary" loading={savingProject} onClick={editingProject ? handleUpdateProject : handleCreateProject}>
+                  {editingProject ? (savingProject ? 'Guardando…' : 'Guardar Cambios') : (savingProject ? 'Creando…' : 'Crear Proyecto')}
                 </Button>
               </div>
             </Card>
@@ -615,9 +631,9 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <Button variant="subtle" onClick={() => setShowClientModal(false)}>Cancelar</Button>
-                <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={handleCreateClient}>
-                  Crear Cliente
+                <Button variant="subtle" disabled={savingClient} onClick={() => setShowClientModal(false)}>Cancelar</Button>
+                <Button variant="primary" icon={<Plus className="h-4 w-4" />} loading={savingClient} onClick={handleCreateClient}>
+                  {savingClient ? 'Creando…' : 'Crear Cliente'}
                 </Button>
               </div>
             </Card>
@@ -630,14 +646,14 @@ export default function ProjectsPage() {
             <Card className="w-full max-w-md">
               <h3 className="text-lg font-semibold mb-4">Confirmar Eliminación</h3>
               <p className="text-redwood-muted mb-6">
-                ¿Estás seguro de que deseas eliminar el proyecto "{deletingProject.name}"? Esta acción eliminará todas las fases, tareas y registros asociados.
+                ¿Estás seguro de que deseas eliminar el proyecto &quot;{deletingProject.name}&quot;? Esta acción eliminará todas las fases, tareas y registros asociados.
               </p>
               <div className="flex justify-end gap-2">
-                <Button variant="subtle" onClick={() => setDeletingProject(null)}>
+                <Button variant="subtle" disabled={deletingProjectInFlight} onClick={() => setDeletingProject(null)}>
                   Cancelar
                 </Button>
-                <Button variant="danger" onClick={handleDeleteProject}>
-                  Eliminar
+                <Button variant="danger" loading={deletingProjectInFlight} onClick={handleDeleteProject}>
+                  {deletingProjectInFlight ? 'Eliminando…' : 'Eliminar'}
                 </Button>
               </div>
             </Card>

@@ -62,7 +62,7 @@ export default function PlanningPage() {
       const [td, pd, ud] = await Promise.all([tasksRes.json(), projectsRes.json(), usersRes.json()]);
       if (td.success) setTasks(td.data);
       if (pd.success) setProjects(pd.data);
-      if (ud.success) setResources(ud.data.map((u: any) => ({ id: u.id, userId: u.id, name: u.name })));
+      if (ud.success) setResources(ud.data.map((u: { id: string; name: string }) => ({ id: u.id, userId: u.id, name: u.name })));
     } catch (e) {
       console.error('Error fetching planning data:', e);
     } finally {

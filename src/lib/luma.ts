@@ -1,5 +1,7 @@
-const LUMA_API_URL = process.env.LUMA_API_URL || 'https://luma.deepgen.qzz.io';
-const LUMA_API_KEY = process.env.LUMA_API_KEY || 'AmyRose#Sonic@Amor';
+// Credentials come from the environment only (.env.local). Never hardcode the
+// API key here — this file is committed to git and the key would leak.
+const LUMA_API_URL = process.env.LUMA_API_URL;
+const LUMA_API_KEY = process.env.LUMA_API_KEY;
 
 type CacheEntry = { data: unknown; expires: number };
 
@@ -10,7 +12,10 @@ export class LumaClient {
   private inFlight = new Map<string, Promise<unknown>>();
   private readonly CACHE_TTL = 30_000; // 30 seconds
 
-  constructor(baseUrl: string = LUMA_API_URL, apiKey: string = LUMA_API_KEY) {
+  constructor(baseUrl: string | undefined = LUMA_API_URL, apiKey: string | undefined = LUMA_API_KEY) {
+    if (!baseUrl || !apiKey) {
+      throw new Error('LUMA_API_URL and LUMA_API_KEY must be set in the environment (.env.local).');
+    }
     this.baseUrl = baseUrl;
     this.headers = {
       'Content-Type': 'application/json',
@@ -43,20 +48,38 @@ export class LumaClient {
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers: {
-        ...this.headers,
-        ...options.headers,
-      },
-    });
+    // All our operations are idempotent (GET, PUT by id, POST .../find reads),
+    // so we can safely retry transient failures (network errors or 5xx, which
+    // Luma can return sporadically under rapid sequential writes).
+    const maxAttempts = 4;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}${path}`, {
+          ...options,
+          headers: { ...this.headers, ...options.headers },
+        });
+      } catch (err) {
+        // Network error — retry with linear backoff.
+        lastErr = err;
+        if (attempt >= maxAttempts) break;
+        await new Promise(r => setTimeout(r, 40 * attempt));
+        continue;
+      }
 
-    if (!response.ok) {
+      if (response.ok) return response.json();
+
+      // Transient server error — retry; client errors (4xx) are deterministic.
+      if (response.status >= 500 && attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 40 * attempt));
+        continue;
+      }
+
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       throw new Error(error.message || error.error || `HTTP ${response.status}`);
     }
-
-    return response.json();
+    throw lastErr instanceof Error ? lastErr : new Error('Luma request failed');
   }
 
   // SQL Operations

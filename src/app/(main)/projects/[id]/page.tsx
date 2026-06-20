@@ -27,6 +27,7 @@ export default function ProjectDetailPage() {
   const [selectedPhase, setSelectedPhase] = useState<PhaseWithApproval | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [canApprove, setCanApprove] = useState(false);
 
@@ -73,31 +74,32 @@ export default function ProjectDetailPage() {
   };
 
   const handleDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: 'DELETE',
       });
       if (res.ok) {
         router.push('/projects');
+      } else {
+        setDeleting(false);
       }
     } catch (error) {
       console.error('Error deleting project:', error);
+      setDeleting(false);
     }
   };
 
   const handleEdit = async (updates: Partial<ProjectDetail>) => {
-    try {
-      const res = await fetch(`/api/projects/${projectId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      if (res.ok) {
-        fetchProject();
-        setShowEditModal(false);
-      }
-    } catch (error) {
-      console.error('Error updating project:', error);
+    const res = await fetch(`/api/projects/${projectId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      fetchProject();
+      setShowEditModal(false);
     }
   };
 
@@ -290,11 +292,11 @@ export default function ProjectDetailPage() {
                 ¿Estás seguro de que deseas eliminar el proyecto &ldquo;{project.name}&rdquo;? Esta acción eliminará todas las fases, tareas y registros asociados.
               </p>
               <div className="flex justify-end gap-2">
-                <Button variant="subtle" onClick={() => setShowDeleteConfirm(false)}>
+                <Button variant="subtle" disabled={deleting} onClick={() => setShowDeleteConfirm(false)}>
                   Cancelar
                 </Button>
-                <Button variant="danger" onClick={handleDelete}>
-                  Eliminar
+                <Button variant="danger" loading={deleting} onClick={handleDelete}>
+                  {deleting ? 'Eliminando…' : 'Eliminar'}
                 </Button>
               </div>
             </Card>
@@ -305,11 +307,12 @@ export default function ProjectDetailPage() {
   );
 }
 
-function EditProjectModal({ project, onClose, onSave }: { 
-  project: ProjectDetail; 
-  onClose: () => void; 
-  onSave: (updates: Partial<ProjectDetail>) => void;
+function EditProjectModal({ project, onClose, onSave }: {
+  project: ProjectDetail;
+  onClose: () => void;
+  onSave: (updates: Partial<ProjectDetail>) => Promise<void>;
 }) {
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<{
     name: string;
     code: string;
@@ -334,42 +337,54 @@ function EditProjectModal({ project, onClose, onSave }: {
     billable: project.billable,
   });
 
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(formData);
+    } catch (error) {
+      console.error('Error updating project:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold mb-4">Editar Proyecto</h3>
+        <h3 className="text-lg font-semibold mb-4 text-redwood-text">Editar Proyecto</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Nombre</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Nombre</label>
             <input
               type="text"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.name}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Código</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Código</label>
             <input
               type="text"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.code}
               onChange={e => setFormData({ ...formData, code: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Cliente</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Cliente</label>
             <input
               type="text"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.client}
               onChange={e => setFormData({ ...formData, client: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Estado</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Estado</label>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.status}
               onChange={e => setFormData({ ...formData, status: e.target.value as 'active' | 'on_hold' | 'completed' | 'archived' })}
             >
@@ -380,64 +395,65 @@ function EditProjectModal({ project, onClose, onSave }: {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Fecha Inicio</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Fecha Inicio</label>
             <input
               type="date"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.startDate}
               onChange={e => setFormData({ ...formData, startDate: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Fecha Fin</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Fecha Fin</label>
             <input
               type="date"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.endDate}
               onChange={e => setFormData({ ...formData, endDate: e.target.value })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Presupuesto ($)</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Presupuesto ($)</label>
             <input
               type="number"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.budget}
               onChange={e => setFormData({ ...formData, budget: Number(e.target.value) })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Horas Presupuestadas</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Horas Presupuestadas</label>
             <input
               type="number"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.budgetHours}
               onChange={e => setFormData({ ...formData, budgetHours: Number(e.target.value) })}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Tarifa/Hora ($)</label>
+            <label className="block text-sm font-medium mb-1 text-redwood-muted">Tarifa/Hora ($)</label>
             <input
               type="number"
-              className="w-full border rounded px-3 py-2"
+              className="w-full h-10 px-3 bg-redwood-surface border border-redwood-border rounded-lg text-sm text-redwood-text focus:border-redwood-focus-ring focus:outline-none focus:ring-2 focus:ring-redwood-focus-ring/20 transition-all"
               value={formData.hourlyRate}
               onChange={e => setFormData({ ...formData, hourlyRate: Number(e.target.value) })}
             />
           </div>
           <div className="flex items-center">
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-redwood-text cursor-pointer">
               <input
                 type="checkbox"
                 checked={formData.billable}
                 onChange={e => setFormData({ ...formData, billable: e.target.checked })}
+                className="h-4 w-4 rounded border-redwood-border text-redwood-primary focus:ring-redwood-focus-ring"
               />
               <span>Facturable</span>
             </label>
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <Button variant="subtle" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={() => onSave(formData)}>Guardar</Button>
+          <Button variant="subtle" disabled={saving} onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" loading={saving} onClick={handleSave}>{saving ? 'Guardando…' : 'Guardar'}</Button>
         </div>
       </Card>
     </div>

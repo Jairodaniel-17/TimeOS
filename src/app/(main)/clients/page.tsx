@@ -40,6 +40,7 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [newClient, setNewClient] = useState({
     name: '',
     email: '',
@@ -124,7 +125,8 @@ export default function ClientsPage() {
   };
 
   const handleDeleteClient = async () => {
-    if (!deletingClient) return;
+    if (!deletingClient || deleting) return;
+    setDeleting(true);
     try {
       await fetch(`/api/clients/${deletingClient.id}`, { method: 'DELETE' });
       setDeletingClient(null);
@@ -132,6 +134,8 @@ export default function ClientsPage() {
       fetchClients();
     } catch (error) {
       console.error('Error deleting client:', error);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -490,8 +494,8 @@ export default function ClientsPage() {
               Los proyectos asociados no se eliminarán.
             </p>
             <div className="flex justify-end gap-2">
-              <Button variant="subtle" onClick={() => setDeletingClient(null)}>Cancelar</Button>
-              <Button variant="danger" onClick={handleDeleteClient}>Eliminar</Button>
+              <Button variant="subtle" disabled={deleting} onClick={() => setDeletingClient(null)}>Cancelar</Button>
+              <Button variant="danger" loading={deleting} onClick={handleDeleteClient}>{deleting ? 'Eliminando…' : 'Eliminar'}</Button>
             </div>
           </Card>
         </div>

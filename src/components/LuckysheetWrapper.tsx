@@ -6,6 +6,16 @@ interface LuckysheetWrapperProps {
   data: { name: string; data: (string | number)[][] }[];
 }
 
+interface LuckysheetApi {
+  create: (options: Record<string, unknown>) => void;
+}
+
+declare global {
+  interface Window {
+    luckysheet?: LuckysheetApi;
+  }
+}
+
 let luckysheetIdCounter = 0;
 
 export default function LuckysheetWrapper({ data }: LuckysheetWrapperProps) {
@@ -17,7 +27,7 @@ export default function LuckysheetWrapper({ data }: LuckysheetWrapperProps) {
     if (typeof window === 'undefined') return;
 
     const loadLuckysheet = async () => {
-      if ((window as any).luckysheet) {
+      if (window.luckysheet) {
         setReady(true);
         return;
       }
@@ -66,10 +76,10 @@ export default function LuckysheetWrapper({ data }: LuckysheetWrapperProps) {
     initialized.current = true;
 
     const initializeSheet = () => {
-      if (!(window as any).luckysheet) return;
+      if (!window.luckysheet) return;
 
       try {
-        (window as any).luckysheet.create({
+        window.luckysheet.create({
           container: containerId,
           title: 'TimeOS - Hoja de Cálculo',
           lang: 'es',

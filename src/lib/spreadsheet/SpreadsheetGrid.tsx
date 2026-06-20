@@ -132,9 +132,12 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     return () => window.removeEventListener('mousedown', close);
   }, [contextMenu]);
 
-  // Update data when initialData prop changes (sheet switch)
-  useEffect(() => {
-    if (!initialData) return;
+  // Update data when initialData prop changes (sheet switch).
+  // Adjusting state during render (with a previous-value guard) instead of in
+  // an effect, per the React "storing information from previous renders" pattern.
+  const [prevInitialData, setPrevInitialData] = useState(initialData);
+  if (initialData && prevInitialData !== initialData) {
+    setPrevInitialData(initialData);
     const init: Record<string, CellData> = {};
     initialData.forEach((row, r) => {
       row.forEach((val, c) => {
@@ -144,7 +147,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     setCells(init);
     setFormulas({});
     setFormats({});
-  }, [initialData]);
+  }
 
   const getColWidth = useCallback((col: number) => colWidths[col] ?? DEFAULT_COL_WIDTH, [colWidths]);
 
@@ -222,6 +225,73 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     startEdit(row, col);
   }, [startEdit]);
 
+  const handleCopy = useCallback(() => {
+    const minR = Math.min(selection.startRow, selection.endRow);
+    const maxR = Math.max(selection.startRow, selection.endRow);
+    const minC = Math.min(selection.startCol, selection.endCol);
+    const maxC = Math.max(selection.startCol, selection.endCol);
+    const clip: Record<string, CellData> = {};
+    const clipFmts: Record<string, CellFormat> = {};
+    for (let r = minR; r <= maxR; r++)
+      for (let c = minC; c <= maxC; c++) {
+        clip[cellKey(r - minR, c - minC)] = cells[cellKey(r, c)] ?? null;
+        if (formats[cellKey(r, c)]) clipFmts[cellKey(r - minR, c - minC)] = formats[cellKey(r, c)];
+      }
+    setClipboard({ cells: clip, fmts: clipFmts, rows: maxR - minR + 1, cols: maxC - minC + 1 });
+  }, [selection, cells, formats]);
+
+  const handlePaste = useCallback(() => {
+    if (!clipboard) return;
+    const { startRow, startCol } = selection;
+    setCells(prev => {
+      const next = { ...prev };
+      for (let r = 0; r < clipboard.rows; r++)
+        for (let c = 0; c < clipboard.cols; c++) {
+          const val = clipboard.cells[cellKey(r, c)];
+          if (val !== undefined) next[cellKey(startRow + r, startCol + c)] = val;
+        }
+      return next;
+    });
+    setFormats(prev => {
+      const next = { ...prev };
+      for (let r = 0; r < clipboard.rows; r++)
+        for (let c = 0; c < clipboard.cols; c++) {
+          const fmt = clipboard.fmts[cellKey(r, c)];
+          if (fmt) next[cellKey(startRow + r, startCol + c)] = fmt;
+        }
+      return next;
+    });
+  }, [clipboard, selection]);
+
+  const handleCut = useCallback(() => {
+    handleCopy();
+    const minR = Math.min(selection.startRow, selection.endRow);
+    const maxR = Math.max(selection.startRow, selection.endRow);
+    const minC = Math.min(selection.startCol, selection.endCol);
+    const maxC = Math.max(selection.startCol, selection.endCol);
+    setCells(prev => {
+      const n = { ...prev };
+      for (let r = minR; r <= maxR; r++) for (let c = minC; c <= maxC; c++) delete n[cellKey(r, c)];
+      return n;
+    });
+  }, [handleCopy, selection]);
+
+  const applyFormat = useCallback((fmt: Partial<CellFormat>) => {
+    const minR = Math.min(selection.startRow, selection.endRow);
+    const maxR = Math.max(selection.startRow, selection.endRow);
+    const minC = Math.min(selection.startCol, selection.endCol);
+    const maxC = Math.max(selection.startCol, selection.endCol);
+    setFormats(prev => {
+      const next = { ...prev };
+      for (let r = minR; r <= maxR; r++)
+        for (let c = minC; c <= maxC; c++) {
+          const key = cellKey(r, c);
+          next[key] = { ...(next[key] || {}), ...fmt };
+        }
+      return next;
+    });
+  }, [selection]);
+
   const handleGridKeyDown = useCallback((e: React.KeyboardEvent) => {
     const { startRow, startCol } = selection;
 
@@ -282,79 +352,12 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       setEditValue(e.key);
       setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [editingCell, selection, rowCount, colCount, commitEdit, formulas, cells, onCellSelect, startEdit, formats]);
-
-  const handleCopy = useCallback(() => {
-    const minR = Math.min(selection.startRow, selection.endRow);
-    const maxR = Math.max(selection.startRow, selection.endRow);
-    const minC = Math.min(selection.startCol, selection.endCol);
-    const maxC = Math.max(selection.startCol, selection.endCol);
-    const clip: Record<string, CellData> = {};
-    const clipFmts: Record<string, CellFormat> = {};
-    for (let r = minR; r <= maxR; r++)
-      for (let c = minC; c <= maxC; c++) {
-        clip[cellKey(r - minR, c - minC)] = cells[cellKey(r, c)] ?? null;
-        if (formats[cellKey(r, c)]) clipFmts[cellKey(r - minR, c - minC)] = formats[cellKey(r, c)];
-      }
-    setClipboard({ cells: clip, fmts: clipFmts, rows: maxR - minR + 1, cols: maxC - minC + 1 });
-  }, [selection, cells, formats]);
-
-  const handlePaste = useCallback(() => {
-    if (!clipboard) return;
-    const { startRow, startCol } = selection;
-    setCells(prev => {
-      const next = { ...prev };
-      for (let r = 0; r < clipboard.rows; r++)
-        for (let c = 0; c < clipboard.cols; c++) {
-          const val = clipboard.cells[cellKey(r, c)];
-          if (val !== undefined) next[cellKey(startRow + r, startCol + c)] = val;
-        }
-      return next;
-    });
-    setFormats(prev => {
-      const next = { ...prev };
-      for (let r = 0; r < clipboard.rows; r++)
-        for (let c = 0; c < clipboard.cols; c++) {
-          const fmt = clipboard.fmts[cellKey(r, c)];
-          if (fmt) next[cellKey(startRow + r, startCol + c)] = fmt;
-        }
-      return next;
-    });
-  }, [clipboard, selection]);
-
-  const handleCut = useCallback(() => {
-    handleCopy();
-    const minR = Math.min(selection.startRow, selection.endRow);
-    const maxR = Math.max(selection.startRow, selection.endRow);
-    const minC = Math.min(selection.startCol, selection.endCol);
-    const maxC = Math.max(selection.startCol, selection.endCol);
-    setCells(prev => {
-      const n = { ...prev };
-      for (let r = minR; r <= maxR; r++) for (let c = minC; c <= maxC; c++) delete n[cellKey(r, c)];
-      return n;
-    });
-  }, [handleCopy, selection]);
+  }, [editingCell, selection, rowCount, colCount, commitEdit, formulas, cells, onCellSelect, startEdit, formats, handleCopy, handleCut, handlePaste, applyFormat]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
-
-  const applyFormat = useCallback((fmt: Partial<CellFormat>) => {
-    const minR = Math.min(selection.startRow, selection.endRow);
-    const maxR = Math.max(selection.startRow, selection.endRow);
-    const minC = Math.min(selection.startCol, selection.endCol);
-    const maxC = Math.max(selection.startCol, selection.endCol);
-    setFormats(prev => {
-      const next = { ...prev };
-      for (let r = minR; r <= maxR; r++)
-        for (let c = minC; c <= maxC; c++) {
-          const key = cellKey(r, c);
-          next[key] = { ...(next[key] || {}), ...fmt };
-        }
-      return next;
-    });
-  }, [selection]);
 
   // Column resize
   const startColResize = useCallback((e: React.MouseEvent, col: number) => {

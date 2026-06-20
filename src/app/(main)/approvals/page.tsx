@@ -22,6 +22,8 @@ interface Approval {
 interface TimeEntry {
   id: string;
   activity: string;
+  notes?: string;
+  billable?: boolean;
   total: number;
   project: { name: string } | null;
   hours: Record<string, number>;
@@ -36,6 +38,7 @@ export default function ApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [rejectModal, setRejectModal] = useState<'reject' | 'changes' | null>(null);
   const [rejectComment, setRejectComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const { user } = useAuth();
   const { isAdmin, isManager } = usePermissions();
 
@@ -79,30 +82,45 @@ export default function ApprovalsPage() {
   }, [selectedItem]);
 
   const handleApprove = async (id: string) => {
-    await fetch('/api/approvals', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: 'approved', approverId: user?.id }),
-    });
-    fetchApprovals();
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await fetch('/api/approvals', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: 'approved', approverId: user?.id }),
+      });
+      await fetchApprovals();
+    } catch (error) {
+      console.error('Error approving:', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleReject = async () => {
-    if (!selectedItem || !rejectModal) return;
+    if (!selectedItem || !rejectModal || submitting) return;
     const status = rejectModal === 'changes' ? 'changes_requested' : 'rejected';
-    await fetch('/api/approvals', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: selectedItem.id,
-        status,
-        approverId: user?.id,
-        comments: rejectComment || (rejectModal === 'changes' ? 'Se solicitan cambios' : 'Rechazado'),
-      }),
-    });
-    setRejectModal(null);
-    setRejectComment('');
-    fetchApprovals();
+    setSubmitting(true);
+    try {
+      await fetch('/api/approvals', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedItem.id,
+          status,
+          approverId: user?.id,
+          comments: rejectComment || (rejectModal === 'changes' ? 'Se solicitan cambios' : 'Rechazado'),
+        }),
+      });
+      setRejectModal(null);
+      setRejectComment('');
+      await fetchApprovals();
+    } catch (error) {
+      console.error('Error rejecting:', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -121,6 +139,7 @@ export default function ApprovalsPage() {
             <div className="space-y-1">
               {[
                 { id: 'pending', label: 'Pendientes' },
+                { id: 'changes_requested', label: 'Cambios solicitados' },
                 { id: 'approved', label: 'Aprobados' },
                 { id: 'rejected', label: 'Rechazados' },
               ].map((filter) => (
@@ -157,7 +176,7 @@ export default function ApprovalsPage() {
                 <div className="flex flex-col items-center justify-center h-full text-center p-6">
                   <CheckCircle className="h-12 w-12 text-[var(--color-success)] mb-3" />
                   <p className="text-sm font-medium text-redwood-text">
-                    No hay aprobaciones {activeTab === 'pending' ? 'pendientes' : activeTab === 'approved' ? 'aprobadas' : 'rechazadas'}
+                    No hay aprobaciones {activeTab === 'pending' ? 'pendientes' : activeTab === 'approved' ? 'aprobadas' : activeTab === 'changes_requested' ? 'con cambios solicitados' : 'rechazadas'}
                   </p>
                 </div>
               ) : (
@@ -225,7 +244,7 @@ export default function ApprovalsPage() {
                       <thead className="bg-redwood-page">
                         <tr>
                           <th className="text-left text-xs font-medium text-redwood-muted px-4 py-2">Proyecto</th>
-                          <th className="text-left text-xs font-medium text-redwood-muted px-4 py-2">Actividad</th>
+                          <th className="text-left text-xs font-medium text-redwood-muted px-4 py-2">Actividad y detalle</th>
                           <th className="text-right text-xs font-medium text-redwood-muted px-4 py-2">Horas</th>
                         </tr>
                       </thead>
@@ -244,9 +263,16 @@ export default function ApprovalsPage() {
                           </tr>
                         ) : (
                           selectedEntries.map(entry => (
-                            <tr key={entry.id}>
+                            <tr key={entry.id} className="align-top">
                               <td className="text-sm px-4 py-2">{entry.project?.name || '—'}</td>
-                              <td className="text-sm px-4 py-2 text-redwood-muted">{entry.activity}</td>
+                              <td className="text-sm px-4 py-2">
+                                <span className="text-redwood-text">{entry.activity}</span>
+                                {entry.notes?.trim() && (
+                                  <p className="mt-1 text-xs text-redwood-muted whitespace-pre-wrap leading-relaxed border-l-2 border-redwood-border pl-2">
+                                    {entry.notes}
+                                  </p>
+                                )}
+                              </td>
                               <td className="text-right text-sm font-medium px-4 py-2">{entry.total}h</td>
                             </tr>
                           ))
@@ -268,6 +294,7 @@ export default function ApprovalsPage() {
                           variant="subtle"
                           icon={<MessageCircle className="h-4 w-4" />}
                           onClick={() => setRejectModal('changes')}
+                          disabled={submitting}
                         >
                           Solicitar cambios
                         </Button>
@@ -275,6 +302,7 @@ export default function ApprovalsPage() {
                           variant="danger"
                           icon={<XCircle className="h-4 w-4" />}
                           onClick={() => setRejectModal('reject')}
+                          disabled={submitting}
                         >
                           Rechazar
                         </Button>
@@ -282,8 +310,9 @@ export default function ApprovalsPage() {
                           variant="primary"
                           icon={<CheckCircle className="h-4 w-4" />}
                           onClick={() => handleApprove(selectedItem.id)}
+                          loading={submitting}
                         >
-                          Aprobar
+                          {submitting ? 'Aprobando…' : 'Aprobar'}
                         </Button>
                       </>
                     )}
@@ -322,11 +351,11 @@ export default function ApprovalsPage() {
               onChange={e => setRejectComment(e.target.value)}
             />
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="subtle" onClick={() => { setRejectModal(null); setRejectComment(''); }}>
+              <Button variant="subtle" onClick={() => { setRejectModal(null); setRejectComment(''); }} disabled={submitting}>
                 Cancelar
               </Button>
-              <Button variant="danger" onClick={handleReject}>
-                {rejectModal === 'changes' ? 'Solicitar cambios' : 'Rechazar'}
+              <Button variant="danger" onClick={handleReject} loading={submitting}>
+                {submitting ? 'Enviando…' : rejectModal === 'changes' ? 'Solicitar cambios' : 'Rechazar'}
               </Button>
             </div>
           </div>

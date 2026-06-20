@@ -13,6 +13,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
@@ -29,8 +30,11 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   }, [userId]);
 
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 60000);
+    (async () => { await fetchNotifications(); })();
+    const interval = setInterval(() => {
+      fetchNotifications();
+      setNow(Date.now());
+    }, 60000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
@@ -88,7 +92,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
   };
 
   const formatTime = (timestamp: number) => {
-    const diff = Date.now() - timestamp;
+    const diff = now - timestamp;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);

@@ -10,6 +10,8 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string>('');
+  const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
+  const [markingAll, setMarkingAll] = useState(false);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -35,6 +37,8 @@ export default function NotificationsPage() {
   };
 
   const markAsRead = async (notificationId: string) => {
+    if (markingIds.has(notificationId)) return;
+    setMarkingIds(prev => new Set(prev).add(notificationId));
     try {
       await fetch('/api/notifications', {
         method: 'PUT',
@@ -44,10 +48,18 @@ export default function NotificationsPage() {
       fetchNotifications(userId);
     } catch (error) {
       console.error('Error marking notification as read:', error);
+    } finally {
+      setMarkingIds(prev => {
+        const next = new Set(prev);
+        next.delete(notificationId);
+        return next;
+      });
     }
   };
 
   const markAllAsRead = async () => {
+    if (markingAll) return;
+    setMarkingAll(true);
     try {
       await fetch('/api/notifications', {
         method: 'PUT',
@@ -57,6 +69,8 @@ export default function NotificationsPage() {
       fetchNotifications(userId);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
+    } finally {
+      setMarkingAll(false);
     }
   };
 
@@ -126,8 +140,8 @@ export default function NotificationsPage() {
         breadcrumbs={[{ label: 'TimeOS' }, { label: 'Notificaciones' }]}
         actions={
           unreadCount > 0 && (
-            <Button variant="subtle" icon={<CheckCheck className="h-4 w-4" />} onClick={markAllAsRead}>
-              Marcar todas como leídas
+            <Button variant="subtle" icon={<CheckCheck className="h-4 w-4" />} loading={markingAll} onClick={markAllAsRead}>
+              {markingAll ? 'Marcando…' : 'Marcar todas como leídas'}
             </Button>
           )
         }
@@ -170,6 +184,7 @@ export default function NotificationsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            loading={markingIds.has(notification.id)}
                             onClick={(e) => {
                               e.stopPropagation();
                               markAsRead(notification.id);

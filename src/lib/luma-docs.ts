@@ -16,7 +16,21 @@ const COLLECTIONS = {
   APPROVAL_FILES: 'approval_files',
   CLIENTS: 'clients',
   NOTIFICATIONS: 'notifications',
+  OBJECTIVES: 'objectives',
+  KEY_RESULTS: 'key_results',
+  INITIATIVES: 'initiatives',
+  SPRINTS: 'sprints',
 } as const;
+
+/**
+ * Construye un filtro para el endpoint `/find` de Luma (igualdad exacta por
+ * campo, server-side), descartando claves vacías. Esto evita el anti-patrón de
+ * "traer toda la colección y filtrar en memoria", que no escala a muchos datos.
+ */
+function buildFilter(obj: Record<string, unknown>): Record<string, unknown> | undefined {
+  const entries = Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
 
 // Users
 export interface UserDoc {
@@ -33,7 +47,11 @@ export interface UserDoc {
 
 export async function getUsers() {
   const docs = await luma.findDocs<UserDoc>(COLLECTIONS.USERS, undefined, 1000);
-  return docs.map(d => d.doc).sort((a, b) => a.name.localeCompare(b.name));
+  // Never expose password hashes through list/join reads. Auth uses
+  // getUserByEmail and updates use getUserById, so neither is affected.
+  return docs
+    .map(({ doc }) => { const { password: _pw, ...safe } = doc; return safe; })
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getUserById(id: string) {
@@ -42,8 +60,10 @@ export async function getUserById(id: string) {
 }
 
 export async function getUserByEmail(email: string) {
-  const docs = await luma.findDocs<UserDoc>(COLLECTIONS.USERS, undefined, 1000);
-  return docs.find(d => d.doc.email.toLowerCase() === email.toLowerCase())?.doc || null;
+  // Server-side exact match on the normalized (lowercased) email — emails are
+  // stored lowercased on create/update so this scales without scanning users.
+  const docs = await luma.findDocs<UserDoc>(COLLECTIONS.USERS, { email: email.toLowerCase() }, 1);
+  return docs[0]?.doc || null;
 }
 
 export async function createUser(user: Omit<UserDoc, 'createdAt' | 'updatedAt'>) {
@@ -54,6 +74,7 @@ export async function createUser(user: Omit<UserDoc, 'createdAt' | 'updatedAt'>)
   }
   const doc: UserDoc = {
     ...user,
+    email: user.email.toLowerCase(),
     password,
     isActive: user.isActive ?? true,
     createdAt: now,
@@ -79,6 +100,7 @@ export async function updateUser(id: string, updates: Partial<Omit<UserDoc, 'id'
   const doc: UserDoc = {
     ...existing,
     ...updates,
+    ...(updates.email ? { email: updates.email.toLowerCase() } : {}),
     updatedAt: Date.now(),
   };
   await luma.putDoc(COLLECTIONS.USERS, id, doc);
@@ -168,26 +190,19 @@ export async function updateProject(id: string, updates: Partial<Omit<ProjectDoc
 
 // Calculate project costs
 export async function calculateProjectCosts(projectId: string) {
-  // Get all tasks for this project
-  const allDocs = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, undefined, 1000);
-  const projectTasks = allDocs.filter(d => d.doc.projectId === projectId);
-  
-  // Get all time entries for this project
+  // Time entries for this project (server-side filtered) and the rate table
+  // fetched ONCE — not per entry (was an N+1).
   const timeEntries = await getTaskTimeEntries({ projectId });
-  
-  // Calculate total hours and cost
+  const resources = await getResources();
+  const rateByUser = new Map(resources.map(r => [r.userId, r.hourlyRate]));
+
   let totalHours = 0;
   let totalCost = 0;
-  
+
   for (const entry of timeEntries) {
     totalHours += entry.hours;
-    
-    // Get resource hourly rate for this user
-    const resources = await getResources();
-    const resource = resources.find(r => r.userId === entry.userId);
-    if (resource) {
-      totalCost += entry.hours * resource.hourlyRate;
-    }
+    const rate = rateByUser.get(entry.userId);
+    if (rate) totalCost += entry.hours * rate;
   }
   
   // Update project with calculated values
@@ -227,30 +242,27 @@ export interface TaskDoc {
   subtasks?: TaskDoc[];
   isEpic?: boolean;
   isMilestone?: boolean;
+  type?: 'epic' | 'story' | 'task' | 'bug';
+  sprintId?: string;
   createdAt: number;
   updatedAt: number;
 }
 
 export async function getTasks(filter?: { projectId?: string; assigneeId?: string; parentId?: string | null }) {
-  const allDocs = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, undefined, 1000);
+  // Push the equality filters server-side. `parentId: null` (top-level only)
+  // can't be expressed as equality, so that case is filtered in memory.
+  const f = buildFilter({
+    projectId: filter?.projectId,
+    assigneeId: filter?.assigneeId,
+    parentId: typeof filter?.parentId === 'string' ? filter.parentId : undefined,
+  });
+  const allDocs = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, f, 5000);
   let tasks = allDocs.map(d => d.doc);
-  
-  if (filter?.projectId) {
-    tasks = tasks.filter(t => t.projectId === filter.projectId);
+
+  if (filter?.parentId === null) {
+    tasks = tasks.filter(t => !t.parentId);
   }
-  
-  if (filter?.assigneeId) {
-    tasks = tasks.filter(t => t.assigneeId === filter.assigneeId);
-  }
-  
-  if (filter?.parentId !== undefined) {
-    if (filter.parentId === null) {
-      tasks = tasks.filter(t => !t.parentId);
-    } else {
-      tasks = tasks.filter(t => t.parentId === filter.parentId);
-    }
-  }
-  
+
   // Build hierarchy
   const taskMap = new Map(tasks.map(t => [t.id, t]));
   const rootTasks: TaskDoc[] = [];
@@ -334,15 +346,9 @@ export interface TaskTimeEntryDoc {
 }
 
 export async function getTaskTimeEntries(filter?: { taskId?: string; userId?: string; projectId?: string; weekNumber?: number; year?: number }) {
-  const allDocs = await luma.findDocs<TaskTimeEntryDoc>(COLLECTIONS.TASK_TIME_ENTRIES, undefined, 1000);
-  let entries = allDocs.map(d => d.doc);
-  
-  if (filter?.taskId) entries = entries.filter(e => e.taskId === filter.taskId);
-  if (filter?.userId) entries = entries.filter(e => e.userId === filter.userId);
-  if (filter?.projectId) entries = entries.filter(e => e.projectId === filter.projectId);
-  if (filter?.weekNumber) entries = entries.filter(e => e.weekNumber === filter.weekNumber);
-  if (filter?.year) entries = entries.filter(e => e.year === filter.year);
-  
+  const f = buildFilter({ taskId: filter?.taskId, userId: filter?.userId, projectId: filter?.projectId, weekNumber: filter?.weekNumber, year: filter?.year });
+  const allDocs = await luma.findDocs<TaskTimeEntryDoc>(COLLECTIONS.TASK_TIME_ENTRIES, f, 5000);
+  const entries = allDocs.map(d => d.doc);
   return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
@@ -415,8 +421,8 @@ export async function getResourceById(id: string) {
 }
 
 export async function getResourceByUserId(userId: string) {
-  const resources = await getResources();
-  return resources.find(r => r.userId === userId) || null;
+  const docs = await luma.findDocs<ResourceDoc>(COLLECTIONS.RESOURCES, { userId }, 1);
+  return docs[0]?.doc || null;
 }
 
 export async function createResource(resource: Omit<ResourceDoc, 'createdAt' | 'updatedAt'>) {
@@ -456,14 +462,9 @@ export interface AllocationDoc {
 }
 
 export async function getAllocations(filter?: { resourceId?: string; projectId?: string; weekNumber?: number; year?: number }) {
-  const allDocs = await luma.findDocs<AllocationDoc>(COLLECTIONS.ALLOCATIONS, undefined, 1000);
-  let allocations = allDocs.map(d => d.doc);
-  
-  if (filter?.resourceId) allocations = allocations.filter(a => a.resourceId === filter.resourceId);
-  if (filter?.projectId) allocations = allocations.filter(a => a.projectId === filter.projectId);
-  if (filter?.weekNumber) allocations = allocations.filter(a => a.weekNumber === filter.weekNumber);
-  if (filter?.year) allocations = allocations.filter(a => a.year === filter.year);
-  
+  const f = buildFilter({ resourceId: filter?.resourceId, projectId: filter?.projectId, weekNumber: filter?.weekNumber, year: filter?.year });
+  const allDocs = await luma.findDocs<AllocationDoc>(COLLECTIONS.ALLOCATIONS, f, 5000);
+  const allocations = allDocs.map(d => d.doc);
   return allocations.sort((a, b) => b.year - a.year || b.weekNumber - a.weekNumber);
 }
 
@@ -481,7 +482,7 @@ export interface ApprovalDoc {
   weekNumber: number;
   year: number;
   totalHours: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'changes_requested';
   comments?: string;
   submittedAt?: number;
   reviewedAt?: number;
@@ -489,12 +490,9 @@ export interface ApprovalDoc {
 }
 
 export async function getApprovals(filter?: { status?: string; userId?: string }) {
-  const allDocs = await luma.findDocs<ApprovalDoc>(COLLECTIONS.APPROVALS, undefined, 1000);
-  let approvals = allDocs.map(d => d.doc);
-  
-  if (filter?.status) approvals = approvals.filter(a => a.status === filter.status);
-  if (filter?.userId) approvals = approvals.filter(a => a.userId === filter.userId);
-  
+  const f = buildFilter({ status: filter?.status, userId: filter?.userId });
+  const allDocs = await luma.findDocs<ApprovalDoc>(COLLECTIONS.APPROVALS, f, 5000);
+  const approvals = allDocs.map(d => d.doc);
   return approvals.sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -537,16 +535,10 @@ export interface TimeEntryDoc {
   updatedAt: number;
 }
 
-export async function getTimeEntries(filter?: { userId?: string; projectId?: string; weekNumber?: number; year?: number }) {
-  const allDocs = await luma.findDocs<TimeEntryDoc>(COLLECTIONS.TIME_ENTRIES, undefined, 1000);
-  let entries = allDocs.map(d => d.doc);
-  
-  if (filter?.userId) entries = entries.filter(e => e.userId === filter.userId);
-  if (filter?.projectId) entries = entries.filter(e => e.projectId === filter.projectId);
-  if (filter?.weekNumber) entries = entries.filter(e => e.weekNumber === filter.weekNumber);
-  if (filter?.year) entries = entries.filter(e => e.year === filter.year);
-  
-  return entries.sort((a, b) => b.createdAt - a.createdAt);
+export async function getTimeEntries(filter?: { userId?: string; projectId?: string; weekNumber?: number; year?: number }, limit = 5000) {
+  const f = buildFilter({ userId: filter?.userId, projectId: filter?.projectId, weekNumber: filter?.weekNumber, year: filter?.year });
+  const docs = await luma.findDocs<TimeEntryDoc>(COLLECTIONS.TIME_ENTRIES, f, limit);
+  return docs.map(d => d.doc).sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function createTimeEntry(entry: Omit<TimeEntryDoc, 'createdAt' | 'updatedAt'>) {
@@ -671,26 +663,24 @@ export async function updateProjectPhase(id: string, updates: Partial<Omit<Proje
 }
 
 export async function calculatePhaseCosts(projectId: string, phaseId: string) {
-  const allTasks = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, undefined, 1000);
-  const phaseTasks = allTasks.filter(d => d.doc.projectId === projectId && d.doc.phaseId === phaseId);
-  
+  // Tasks of this phase (server-side filtered), the project's time entries, and
+  // the rate table — each fetched ONCE (was a tasks × entries × resources N+1).
+  const taskDocs = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, { projectId, phaseId }, 5000);
+  const phaseTaskIds = new Set(taskDocs.map(d => d.doc.id));
+  const projectEntries = await getTaskTimeEntries({ projectId });
+  const resources = await getResources();
+  const rateByUser = new Map(resources.map(r => [r.userId, r.hourlyRate]));
+
   let totalHours = 0;
   let totalCost = 0;
-  
-  for (const taskDoc of phaseTasks) {
-    const task = taskDoc.doc;
-    const timeEntries = await getTaskTimeEntries({ taskId: task.id });
-    
-    for (const entry of timeEntries) {
-      totalHours += entry.hours;
-      const resources = await getResources();
-      const resource = resources.find(r => r.userId === entry.userId);
-      if (resource) {
-        totalCost += entry.hours * resource.hourlyRate;
-      }
-    }
+
+  for (const entry of projectEntries) {
+    if (!phaseTaskIds.has(entry.taskId)) continue;
+    totalHours += entry.hours;
+    const rate = rateByUser.get(entry.userId);
+    if (rate) totalCost += entry.hours * rate;
   }
-  
+
   await updateProjectPhase(`${projectId}_${phaseId}`, {
     actualHours: totalHours,
     actualCost: totalCost,
@@ -833,10 +823,9 @@ export interface NotificationDoc {
 }
 
 export async function getNotifications(userId: string, limit = 50) {
-  const docs = await luma.findDocs<NotificationDoc>(COLLECTIONS.NOTIFICATIONS, undefined, 1000);
+  const docs = await luma.findDocs<NotificationDoc>(COLLECTIONS.NOTIFICATIONS, { userId }, 1000);
   return docs
     .map(d => d.doc)
-    .filter(n => n.userId === userId)
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, limit);
 }
@@ -897,4 +886,232 @@ export async function deleteProject(id: string) {
   }
   
   await luma.deleteDoc(COLLECTIONS.PROJECTS, id);
+}
+// ===========================================================================
+// OKRs — Objectives, Key Results, Initiatives
+// ===========================================================================
+export interface ObjectiveDoc {
+  id: string;
+  title: string;
+  description?: string;
+  level: 'company' | 'team' | 'individual';
+  ownerId: string;
+  parentId?: string;
+  period: string;
+  periodType: 'annual' | 'quarterly';
+  type: 'aspirational' | 'committed';
+  strategicTheme: 'blue_ocean' | 'red_ocean' | 'growth' | 'efficiency' | 'customer' | 'none';
+  status: 'draft' | 'on_track' | 'at_risk' | 'behind' | 'done';
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface KeyResultDoc {
+  id: string;
+  objectiveId: string;
+  title: string;
+  type: 'metric' | 'binary';
+  unit?: string;
+  startValue: number;
+  targetValue: number;
+  currentValue: number;
+  weight: number;
+  confidence: 'on_track' | 'at_risk' | 'off_track';
+  ownerId?: string;
+  projectId?: string;
+  lastCheckinNote?: string;
+  lastCheckinAt?: number;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface InitiativeDoc {
+  id: string;
+  objectiveId: string;
+  keyResultId?: string;
+  title: string;
+  description?: string;
+  status: 'todo' | 'in_progress' | 'done';
+  projectId?: string;
+  taskId?: string;
+  ownerId?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+/** Score 0–1 de un KR a partir de start/current/target. Soporta metas decrecientes. */
+export function keyResultScore(kr: Pick<KeyResultDoc, 'type' | 'startValue' | 'targetValue' | 'currentValue'>): number {
+  if (kr.type === 'binary') {
+    return kr.currentValue >= (kr.targetValue || 1) ? 1 : 0;
+  }
+  const denom = kr.targetValue - kr.startValue;
+  if (denom === 0) return kr.currentValue >= kr.targetValue ? 1 : 0;
+  const raw = (kr.currentValue - kr.startValue) / denom;
+  return Math.max(0, Math.min(1, raw));
+}
+
+// --- Objectives ---
+export async function getObjectives() {
+  const docs = await luma.findDocs<ObjectiveDoc>(COLLECTIONS.OBJECTIVES, undefined, 1000);
+  return docs.map(d => d.doc);
+}
+
+export async function getObjectiveById(id: string) {
+  const result = await luma.getDoc<ObjectiveDoc>(COLLECTIONS.OBJECTIVES, id);
+  return result?.doc || null;
+}
+
+export async function createObjective(obj: Omit<ObjectiveDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: ObjectiveDoc = { ...obj, createdAt: now, updatedAt: now };
+  await luma.putDoc(COLLECTIONS.OBJECTIVES, obj.id, doc);
+  return doc;
+}
+
+export async function updateObjective(id: string, updates: Partial<Omit<ObjectiveDoc, 'id' | 'createdAt'>>) {
+  const existing = await getObjectiveById(id);
+  if (!existing) return null;
+  const doc: ObjectiveDoc = { ...existing, ...updates, updatedAt: Date.now() };
+  await luma.putDoc(COLLECTIONS.OBJECTIVES, id, doc);
+  return doc;
+}
+
+export async function deleteObjective(id: string) {
+  // Cascade: remove this objective's key results and initiatives.
+  const krs = await getKeyResults({ objectiveId: id });
+  for (const kr of krs) await luma.deleteDoc(COLLECTIONS.KEY_RESULTS, kr.id);
+  const inits = await getInitiatives({ objectiveId: id });
+  for (const it of inits) await luma.deleteDoc(COLLECTIONS.INITIATIVES, it.id);
+  await luma.deleteDoc(COLLECTIONS.OBJECTIVES, id);
+}
+
+// --- Key Results ---
+export async function getKeyResults(filter?: { objectiveId?: string }) {
+  const docs = await luma.findDocs<KeyResultDoc>(COLLECTIONS.KEY_RESULTS, buildFilter({ objectiveId: filter?.objectiveId }), 5000);
+  return docs.map(d => d.doc);
+}
+
+export async function createKeyResult(kr: Omit<KeyResultDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: KeyResultDoc = { ...kr, weight: kr.weight || 1, createdAt: now, updatedAt: now };
+  await luma.putDoc(COLLECTIONS.KEY_RESULTS, kr.id, doc);
+  return doc;
+}
+
+export async function updateKeyResult(id: string, updates: Partial<Omit<KeyResultDoc, 'id' | 'createdAt'>>) {
+  const result = await luma.getDoc<KeyResultDoc>(COLLECTIONS.KEY_RESULTS, id);
+  if (!result) return null;
+  const doc: KeyResultDoc = { ...result.doc, ...updates, updatedAt: Date.now() };
+  await luma.putDoc(COLLECTIONS.KEY_RESULTS, id, doc);
+  return doc;
+}
+
+export async function deleteKeyResult(id: string) {
+  await luma.deleteDoc(COLLECTIONS.KEY_RESULTS, id);
+}
+
+// --- Initiatives ---
+export async function getInitiatives(filter?: { objectiveId?: string }) {
+  const docs = await luma.findDocs<InitiativeDoc>(COLLECTIONS.INITIATIVES, buildFilter({ objectiveId: filter?.objectiveId }), 5000);
+  return docs.map(d => d.doc);
+}
+
+export async function createInitiative(init: Omit<InitiativeDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: InitiativeDoc = { ...init, createdAt: now, updatedAt: now };
+  await luma.putDoc(COLLECTIONS.INITIATIVES, init.id, doc);
+  return doc;
+}
+
+export async function updateInitiative(id: string, updates: Partial<Omit<InitiativeDoc, 'id' | 'createdAt'>>) {
+  const result = await luma.getDoc<InitiativeDoc>(COLLECTIONS.INITIATIVES, id);
+  if (!result) return null;
+  const doc: InitiativeDoc = { ...result.doc, ...updates, updatedAt: Date.now() };
+  await luma.putDoc(COLLECTIONS.INITIATIVES, id, doc);
+  return doc;
+}
+
+export async function deleteInitiative(id: string) {
+  await luma.deleteDoc(COLLECTIONS.INITIATIVES, id);
+}
+
+/** Objetivos con KRs (scored), iniciativas, dueño y % de avance (roll-up ponderado). */
+export async function getObjectivesWithDetails() {
+  const [objectives, allKrs, allInits, users] = await Promise.all([
+    getObjectives(),
+    getKeyResults(),
+    getInitiatives(),
+    getUsers(),
+  ]);
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  const detailed = objectives.map(obj => {
+    const keyResults = allKrs
+      .filter(k => k.objectiveId === obj.id)
+      .map(k => ({ ...k, score: keyResultScore(k) }));
+    const initiatives = allInits.filter(i => i.objectiveId === obj.id);
+    const totalWeight = keyResults.reduce((s, k) => s + (k.weight || 1), 0);
+    const progress = totalWeight > 0
+      ? Math.round((keyResults.reduce((s, k) => s + k.score * (k.weight || 1), 0) / totalWeight) * 100)
+      : 0;
+    return { ...obj, keyResults, initiatives, owner: userMap.get(obj.ownerId), progress };
+  });
+  return detailed;
+}
+
+// ===========================================================================
+// Sprints (Scrum) — un proyecto tiene sprints; las tareas con sprintId están
+// en un sprint, las que no, en el backlog.
+// ===========================================================================
+export interface SprintDoc {
+  id: string;
+  projectId: string;
+  name: string;
+  goal?: string;
+  status: 'planned' | 'active' | 'completed';
+  startDate?: string;
+  endDate?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export async function getSprints(filter?: { projectId?: string; status?: string }) {
+  const docs = await luma.findDocs<SprintDoc>(COLLECTIONS.SPRINTS, buildFilter({ projectId: filter?.projectId, status: filter?.status }), 2000);
+  return docs.map(d => d.doc).sort((a, b) => (b.createdAt - a.createdAt));
+}
+
+export async function getSprintById(id: string) {
+  const result = await luma.getDoc<SprintDoc>(COLLECTIONS.SPRINTS, id);
+  return result?.doc || null;
+}
+
+export async function createSprint(sprint: Omit<SprintDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: SprintDoc = { ...sprint, createdAt: now, updatedAt: now };
+  await luma.putDoc(COLLECTIONS.SPRINTS, sprint.id, doc);
+  return doc;
+}
+
+export async function updateSprint(id: string, updates: Partial<Omit<SprintDoc, 'id' | 'createdAt'>>) {
+  const existing = await getSprintById(id);
+  if (!existing) return null;
+  const doc: SprintDoc = { ...existing, ...updates, updatedAt: Date.now() };
+  await luma.putDoc(COLLECTIONS.SPRINTS, id, doc);
+  return doc;
+}
+
+export async function deleteSprint(id: string) {
+  // Move this sprint's issues back to the backlog instead of orphaning them.
+  const tasks = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, { sprintId: id }, 5000);
+  for (const t of tasks) {
+    await luma.putDoc(COLLECTIONS.TASKS, t.doc.id, { ...t.doc, sprintId: undefined, updatedAt: Date.now() });
+  }
+  await luma.deleteDoc(COLLECTIONS.SPRINTS, id);
+}
+
+/** Tareas (planas, sin jerarquía) para el tablero — filtrables por proyecto/sprint. */
+export async function getBoardTasks(filter: { projectId?: string; sprintId?: string }) {
+  const f = buildFilter({ projectId: filter.projectId, sprintId: filter.sprintId });
+  const docs = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, f, 5000);
+  return docs.map(d => d.doc);
 }

@@ -1,13 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getUsers, createUser, updateUser } from '@/lib/luma-docs';
 import { userSchema, userUpdateSchema } from '@/lib/validation';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const users = await getUsers();
-    // Never expose password hashes to the client
+    // getUsers() already strips password hashes.
+    const all = await getUsers();
+    // Optional pagination: ?page=&pageSize= (non-breaking — full list by default).
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '0');
+    const pageSize = parseInt(searchParams.get('pageSize') || '0');
+    const total = all.length;
+    const users = page > 0 && pageSize > 0 ? all.slice((page - 1) * pageSize, page * pageSize) : all;
     return NextResponse.json({
-      data: users.map(({ password: _, ...u }) => u),
+      data: users,
+      ...(page > 0 && pageSize > 0 ? { pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } } : {}),
       success: true,
     });
   } catch (error) {

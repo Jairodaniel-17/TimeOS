@@ -22,10 +22,12 @@ interface TimeEntry {
   userId: string;
   projectId: string;
   activity: string;
+  notes?: string;
   weekNumber: number;
   year: number;
   total: number;
   status: string;
+  hours?: Record<string, number>;
   project: { name: string };
 }
 
@@ -44,6 +46,15 @@ interface KPIData {
   usersWithoutEntries: number;
   currentWeek: number;
   projectHours: Record<string, number>;
+}
+
+interface TeamMember {
+  userId: string;
+  name: string;
+  logged: number;
+  capacity: number;
+  allocated: number;
+  submission: 'approved' | 'pending' | 'changes_requested' | 'rejected' | 'none';
 }
 
 interface DayBar {
@@ -74,6 +85,7 @@ export default function Dashboard() {
   });
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
+  const [team, setTeam] = useState<TeamMember[]>([]);
   const [weekDayBars, setWeekDayBars] = useState<DayBar[]>(
     DAY_LABELS.map(day => ({ day, pct: 0, hours: 0 }))
   );
@@ -84,14 +96,22 @@ export default function Dashboard() {
       const currentWeek = getWeekNumber();
       const currentYear = getCurrentYear();
 
-      const [entriesRes, approvalsRes] = await Promise.all([
+      const [entriesRes, approvalsRes, usersRes, resourcesRes, allocationsRes, weekApprovalsRes] = await Promise.all([
         fetch(`/api/timesheets?weekNumber=${currentWeek}&year=${currentYear}&limit=500`),
         fetch('/api/approvals?status=pending&limit=5'),
+        fetch('/api/users'),
+        fetch('/api/resources'),
+        fetch('/api/allocations'),
+        fetch('/api/approvals?limit=500'),
       ]);
 
-      const [entriesData, approvalsData] = await Promise.all([
+      const [entriesData, approvalsData, usersData, resourcesData, allocationsData, weekApprovalsData] = await Promise.all([
         entriesRes.json(),
         approvalsRes.json(),
+        usersRes.json(),
+        resourcesRes.json(),
+        allocationsRes.json(),
+        weekApprovalsRes.json(),
       ]);
 
       if (entriesData.success) {
@@ -108,7 +128,7 @@ export default function Dashboard() {
 
         // Compute real hours per weekday
         const dayTotals = DAY_KEYS.map(key =>
-          entries.reduce((sum, e) => sum + ((e as unknown as Record<string, Record<string, number>>).hours?.[key] || 0), 0)
+          entries.reduce((sum, e) => sum + (e.hours?.[key] || 0), 0)
         );
         const maxH = Math.max(...dayTotals, 1);
         setWeekDayBars(dayTotals.map((h, i) => ({
@@ -117,7 +137,34 @@ export default function Dashboard() {
           hours: Math.round(h * 10) / 10,
         })));
 
-        setKpiData(prev => ({ ...prev, totalHours, projectHours }));
+        // --- Team summary for the current week (PM oversight) ---
+        const users = (usersData.success ? usersData.data : []) as { id: string; name: string }[];
+        const resources = (resourcesData.success ? resourcesData.data : []) as { id: string; userId: string; capacity?: number }[];
+        const allocations = (allocationsData.success ? allocationsData.data : []) as { resourceId: string; allocatedHours: number; weekNumber: number; year: number }[];
+        const weekApprovals = (weekApprovalsData.success ? weekApprovalsData.data : []) as { userId: string; weekNumber: number; year: number; status: string }[];
+
+        const loggedByUser = new Map<string, number>();
+        entries.forEach(e => loggedByUser.set(e.userId, (loggedByUser.get(e.userId) || 0) + e.total));
+
+        const summary: TeamMember[] = resources.map(r => {
+          const u = users.find(x => x.id === r.userId);
+          const allocated = allocations
+            .filter(a => a.resourceId === r.id && a.weekNumber === currentWeek && a.year === currentYear)
+            .reduce((s, a) => s + a.allocatedHours, 0);
+          const approval = weekApprovals.find(a => a.userId === r.userId && a.weekNumber === currentWeek && a.year === currentYear);
+          return {
+            userId: r.userId,
+            name: u?.name || 'Sin nombre',
+            logged: loggedByUser.get(r.userId) || 0,
+            capacity: r.capacity || 40,
+            allocated,
+            submission: (approval?.status as TeamMember['submission']) || 'none',
+          };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
+        setTeam(summary);
+        const usersWithoutEntries = summary.filter(m => m.logged === 0).length;
+        setKpiData(prev => ({ ...prev, totalHours, projectHours, usersWithoutEntries }));
       }
 
       if (approvalsData.success) {
@@ -283,17 +330,22 @@ export default function Dashboard() {
                     ) : (
                       recentEntries.map(entry => (
                         <div key={entry.id} className="px-5 py-3 hover:bg-redwood-hover-bg transition-colors">
-                          <p className="text-sm font-semibold text-redwood-text truncate">
-                            {entry.project?.name || 'Sin proyecto'}
-                          </p>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <p className="text-xs text-redwood-muted truncate flex-1">
-                              {entry.activity || 'Sin actividad'}
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-redwood-text truncate">
+                              {entry.project?.name || 'Sin proyecto'}
                             </p>
-                            <span className="text-xs font-bold text-redwood-primary ml-2">
+                            <span className="text-xs font-bold text-redwood-primary flex-shrink-0">
                               {entry.total}h
                             </span>
                           </div>
+                          <p className="text-xs text-redwood-muted truncate mt-0.5">
+                            {entry.activity || 'Sin actividad'}
+                          </p>
+                          {entry.notes?.trim() && (
+                            <p className="text-xs text-redwood-muted/80 line-clamp-2 mt-1 leading-relaxed">
+                              {entry.notes}
+                            </p>
+                          )}
                         </div>
                       ))
                     )}
@@ -301,6 +353,91 @@ export default function Dashboard() {
                 </Card>
               </div>
             </div>
+
+            {/* Team summary — PM oversight for the current week */}
+            <Card padding="none">
+              <CardHeader
+                actions={
+                  <Link href="/resources">
+                    <Button variant="ghost" size="compact">
+                      Ver recursos
+                      <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                    </Button>
+                  </Link>
+                }
+              >
+                <span className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-redwood-muted" />
+                  Equipo · Semana {kpiData.currentWeek}
+                </span>
+              </CardHeader>
+              {team.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <Users className="h-8 w-8 text-redwood-muted opacity-40" />
+                  <p className="text-sm text-redwood-muted">Sin miembros del equipo configurados</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-redwood-border text-left">
+                        <th className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-redwood-muted">Miembro</th>
+                        <th className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-redwood-muted w-[42%]">Horas registradas vs. capacidad</th>
+                        <th className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-redwood-muted text-center">Asignado</th>
+                        <th className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-redwood-muted text-center">Timesheet</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-redwood-border">
+                      {team.map(m => {
+                        const pct = m.capacity > 0 ? Math.min(Math.round((m.logged / m.capacity) * 100), 100) : 0;
+                        const over = m.allocated > m.capacity;
+                        const barColor = m.logged === 0 ? 'bg-redwood-danger' : pct < 60 ? 'bg-redwood-warning' : 'bg-redwood-primary';
+                        const sub = {
+                          approved: { label: 'Aprobado', cls: 'bg-badge-subtle-success-bg text-redwood-green' },
+                          pending: { label: 'Enviado', cls: 'bg-badge-subtle-info-bg text-redwood-primary' },
+                          changes_requested: { label: 'Cambios', cls: 'bg-badge-subtle-warning-bg text-redwood-warning' },
+                          rejected: { label: 'Rechazado', cls: 'bg-badge-subtle-danger-bg text-redwood-danger' },
+                          none: { label: 'Sin enviar', cls: 'bg-redwood-page text-redwood-muted' },
+                        }[m.submission];
+                        return (
+                          <tr key={m.userId} className="hover:bg-redwood-hover-bg transition-colors">
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-oracle-sidebar text-[11px] font-semibold text-white">
+                                  {m.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                                <span className="text-sm font-medium text-redwood-text">{m.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 h-2 bg-redwood-page rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.max(pct, m.logged > 0 ? 4 : 0)}%` }} />
+                                </div>
+                                <span className="text-xs font-semibold text-redwood-text whitespace-nowrap w-16 text-right">
+                                  {m.logged}h / {m.capacity}h
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-center">
+                              <span className={`inline-flex items-center gap-1 text-xs font-medium ${over ? 'text-redwood-danger' : 'text-redwood-muted'}`}>
+                                {m.allocated}h
+                                {over && <span title="Sobreasignado">⚠</span>}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${sub.cls}`}>
+                                {sub.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
 
             {/* Charts row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -3,7 +3,7 @@
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button, Tabs, Card, Input } from '@/components/ui';
 import { Save, Check } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 const DEFAULT_PREFS = {
@@ -12,33 +12,45 @@ const DEFAULT_PREFS = {
   timesheetRejected: true,
 };
 
+function readOrgSettings() {
+  if (typeof window === 'undefined') return null;
+  const orgData = localStorage.getItem('timeos_org_settings');
+  if (!orgData) return null;
+  try {
+    return JSON.parse(orgData) as { orgName?: string; timezone?: string; maxHours?: string; allowWeekend?: boolean };
+  } catch {
+    return null;
+  }
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
   const [saved, setSaved] = useState(false);
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
-  const [orgName, setOrgName] = useState('TimeOS Demo');
-  const [timezone, setTimezone] = useState('America/Mexico_City');
-  const [maxHours, setMaxHours] = useState('12');
-  const [allowWeekend, setAllowWeekend] = useState(true);
+  const [orgName, setOrgName] = useState(() => readOrgSettings()?.orgName ?? 'TimeOS Demo');
+  const [timezone, setTimezone] = useState(() => readOrgSettings()?.timezone ?? 'America/Mexico_City');
+  const [maxHours, setMaxHours] = useState(() => readOrgSettings()?.maxHours ?? '12');
+  const [allowWeekend, setAllowWeekend] = useState(() => {
+    const aw = readOrgSettings()?.allowWeekend;
+    return typeof aw === 'boolean' ? aw : true;
+  });
 
-  useEffect(() => {
-    if (!user) return;
-    const saved = localStorage.getItem(`timeos_prefs_${user.id}`);
-    if (saved) {
-      try { setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(saved) }); } catch { /* ignore */ }
-    }
-    const orgData = localStorage.getItem('timeos_org_settings');
-    if (orgData) {
+  // Load per-user prefs when the user becomes available / changes. Adjusting
+  // state during render with a previous-value guard (the React "storing
+  // information from previous renders" pattern) avoids a setState-in-effect.
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  if (user && loadedUserId !== user.id) {
+    setLoadedUserId(user.id);
+    const stored = typeof window !== 'undefined'
+      ? localStorage.getItem(`timeos_prefs_${user.id}`)
+      : null;
+    if (stored) {
       try {
-        const d = JSON.parse(orgData);
-        if (d.orgName) setOrgName(d.orgName);
-        if (d.timezone) setTimezone(d.timezone);
-        if (d.maxHours) setMaxHours(d.maxHours);
-        if (typeof d.allowWeekend === 'boolean') setAllowWeekend(d.allowWeekend);
+        setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(stored) });
       } catch { /* ignore */ }
     }
-  }, [user]);
+  }
 
   const handleSave = async () => {
     if (user) {
@@ -182,7 +194,7 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-redwood-muted mt-4">Los cambios se guardan al pulsar "Guardar cambios".</p>
+              <p className="text-xs text-redwood-muted mt-4">Los cambios se guardan al pulsar &quot;Guardar cambios&quot;.</p>
             </Card>
           )}
         </div>

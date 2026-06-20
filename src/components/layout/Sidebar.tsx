@@ -24,6 +24,8 @@ import {
   Calculator,
   Shield,
   Building2,
+  Target,
+  KanbanSquare,
 } from 'lucide-react';
 import type { Permission } from '@/hooks/usePermissions';
 import { useEffect, useState } from 'react';
@@ -38,8 +40,10 @@ const navItems: Array<{
   { to: '/projects',      icon: Briefcase,       label: 'Proyectos',      permission: 'projects:read' },
   { to: '/clients',       icon: Building2,       label: 'Clientes',       permission: 'projects:read' },
   { to: '/timesheet',     icon: Clock,           label: 'Tiempos',        permission: null },
+  { to: '/okrs',          icon: Target,          label: 'OKRs',           permission: 'okrs:read' },
   { to: '/approvals',     icon: CheckCircle,     label: 'Aprobaciones',   permission: 'approvals:read' },
   { to: '/tasks',         icon: ListTodo,        label: 'Tareas',         permission: 'tasks:read' },
+  { to: '/board',         icon: KanbanSquare,    label: 'Tablero',        permission: 'tasks:read' },
   { to: '/planning',      icon: GanttChart,      label: 'Planificación',  permission: null },
   { to: '/spreadsheet',   icon: Calculator,      label: 'Hoja de Cálculo',permission: null },
   { to: '/resources',     icon: Users,           label: 'Recursos',       permission: 'resources:read' },
@@ -54,7 +58,8 @@ const navItems: Array<{
 /* Nav groups */
 const NAV_GROUPS = [
   { label: null,       paths: ['/', '/projects', '/clients', '/timesheet'] },
-  { label: 'Gestión',  paths: ['/approvals', '/tasks', '/planning', '/spreadsheet'] },
+  { label: 'Estrategia', paths: ['/okrs'] },
+  { label: 'Gestión',  paths: ['/approvals', '/tasks', '/board', '/planning', '/spreadsheet'] },
   { label: 'Análisis', paths: ['/resources', '/reports', '/costs'] },
   { label: 'Sistema',  paths: ['/users', '/documents', '/settings', '/settings/roles'] },
 ];
@@ -171,18 +176,14 @@ export function Sidebar() {
                             : 'text-white/[.82] hover:text-white hover:bg-white/[.12]'
                         )}
                       >
-                        {/* status dot */}
-                        <span
+                        {/* icon (always shown — expanded and collapsed) */}
+                        <item.icon
                           className={clsx(
-                            'w-2 h-2 rounded-full bg-current flex-shrink-0',
-                            isCollapsed && 'hidden',
-                            isActive ? 'opacity-100' : 'opacity-60'
+                            'h-[18px] w-[18px] flex-shrink-0',
+                            isActive ? 'opacity-100' : 'opacity-80'
                           )}
                         />
-                        {isCollapsed
-                          ? <item.icon className="h-[18px] w-[18px] flex-shrink-0" />
-                          : <span className="flex-1">{item.label}</span>
-                        }
+                        {!isCollapsed && <span className="flex-1">{item.label}</span>}
                         {!isCollapsed && badge > 0 && (
                           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-oracle-red px-1.5 text-[10px] font-bold text-white">
                             {badge > 99 ? '99+' : badge}

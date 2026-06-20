@@ -305,7 +305,7 @@ export default function ReportsPage() {
                 value={year}
                 onChange={(e) => setYear(parseInt(e.target.value))}
               >
-                {[2024, 2025, 2026].map(y => (
+                {Array.from({ length: 5 }, (_, i) => getCurrentYear() - 2 + i).map(y => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>

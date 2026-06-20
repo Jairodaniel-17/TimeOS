@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Header, PageLayout, PageContent } from '@/components/layout';
 import { Button, Tabs, Card } from '@/components/ui';
-import { Filter, AlertTriangle, Loader2, Plus, Search, X, Pencil, Trash2, User, Calendar, Clock, Briefcase } from 'lucide-react';
+import { AlertTriangle, Loader2, Plus, Search, X, Pencil, Trash2, User, Calendar, Clock, Briefcase } from 'lucide-react';
 import type { Resource, ResourceAllocation, Project } from '@/types';
 import { getWeekNumber, getCurrentYear } from '@/lib/utils';
 
@@ -48,6 +48,7 @@ export default function ResourcesPage() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filterProject, setFilterProject] = useState('');
@@ -276,7 +277,9 @@ export default function ResourcesPage() {
   };
 
   const handleDeleteResource = async (id: string) => {
+    if (deletingIds.has(id)) return;
     if (!confirm('¿Eliminar este recurso? Se perderán todas sus asignaciones.')) return;
+    setDeletingIds(prev => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/resources/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -286,12 +289,20 @@ export default function ResourcesPage() {
       setAllocations(prev => prev.filter(a => a.resourceId !== id));
     } catch (err) {
       console.error('Error deleting resource:', err);
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const handleDeleteAllocation = async (id: string) => {
+    if (deletingIds.has(id)) return;
     if (!confirm('¿Estás seguro de que deseas eliminar esta asignación?')) return;
-    
+
+    setDeletingIds(prev => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/allocations?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -316,6 +327,12 @@ export default function ResourcesPage() {
       }));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al eliminar la asignación');
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -370,11 +387,6 @@ export default function ResourcesPage() {
       <Header
         title="Recursos"
         breadcrumbs={[{ label: 'TimeOS' }, { label: 'Recursos' }]}
-        actions={
-          <Button variant="subtle" icon={<Filter className="h-4 w-4" />}>
-            Filtros
-          </Button>
-        }
       />
       <PageContent className="p-0">
         <div className="border-b border-redwood-border bg-redwood-surface px-6 py-2">
@@ -520,6 +532,7 @@ export default function ResourcesPage() {
                             variant="subtle"
                             size="icon"
                             icon={<Trash2 className="h-4 w-4 text-[var(--color-error)]" />}
+                            loading={deletingIds.has(resource.id)}
                             onClick={() => handleDeleteResource(resource.id)}
                           />
                         </td>
@@ -679,6 +692,7 @@ export default function ResourcesPage() {
                                   variant="subtle"
                                   size="icon"
                                   icon={<Pencil className="h-4 w-4" />}
+                                  disabled={deletingIds.has(allocation.id)}
                                   onClick={() => openEditModal(allocation)}
                                   className="h-8 w-8"
                                 />
@@ -686,6 +700,7 @@ export default function ResourcesPage() {
                                   variant="subtle"
                                   size="icon"
                                   icon={<Trash2 className="h-4 w-4" />}
+                                  loading={deletingIds.has(allocation.id)}
                                   onClick={() => handleDeleteAllocation(allocation.id)}
                                   className="h-8 w-8 text-redwood-danger hover:bg-badge-subtle-danger-bg"
                                 />

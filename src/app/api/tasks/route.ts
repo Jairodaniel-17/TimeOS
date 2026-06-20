@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import { 
-  getTasks, 
-  getAllTasksFlat, 
-  getTaskById, 
-  createTask, 
-  updateTask, 
+  getTasks,
+  getAllTasksFlat,
+  getBoardTasks,
+  getTaskById,
+  createTask,
+  updateTask,
   deleteTask,
   getProjects,
   getUsers,
-  type TaskDoc 
+  type TaskDoc
 } from '@/lib/luma-docs';
 
 export async function GET(request: Request) {
@@ -18,6 +19,8 @@ export async function GET(request: Request) {
     const assigneeId = searchParams.get('assigneeId');
     const parentId = searchParams.get('parentId');
     const includeHierarchy = searchParams.get('includeHierarchy') === 'true';
+    const board = searchParams.get('board') === 'true';
+    const sprintId = searchParams.get('sprintId');
     const id = searchParams.get('id');
     const page = parseInt(searchParams.get('page') || '0');
     const pageSize = parseInt(searchParams.get('pageSize') || '0');
@@ -50,7 +53,14 @@ export async function GET(request: Request) {
     }
     
     let tasks: TaskDoc[];
-    if (includeHierarchy || Object.keys(filter).length === 0) {
+    if (board) {
+      // Flat list for the Kanban board, server-side filtered by project/sprint.
+      tasks = await getBoardTasks({
+        projectId: projectId || undefined,
+        sprintId: sprintId && sprintId !== 'backlog' ? sprintId : undefined,
+      });
+      if (sprintId === 'backlog') tasks = tasks.filter(t => !t.sprintId);
+    } else if (includeHierarchy || Object.keys(filter).length === 0) {
       tasks = await getTasks(filter.parentId !== undefined ? filter : undefined);
     } else {
       tasks = await getAllTasksFlat();
@@ -97,10 +107,12 @@ export async function POST(request: Request) {
       dependencies = [],
       isEpic = false,
       isMilestone = false,
+      type = 'task',
+      sprintId,
     } = body;
-    
+
     const id = `task_${Date.now()}`;
-    
+
     const task = await createTask({
       id,
       projectId,
@@ -118,6 +130,8 @@ export async function POST(request: Request) {
       dependencies,
       isEpic,
       isMilestone,
+      type,
+      sprintId: sprintId || undefined,
     });
     
     return NextResponse.json({ data: task, success: true });

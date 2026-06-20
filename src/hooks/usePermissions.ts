@@ -25,7 +25,9 @@ export type Permission =
   // Costs
   | 'costs:read' | 'costs:manage'
   // Spreadsheet
-  | 'spreadsheet:read' | 'spreadsheet:write';
+  | 'spreadsheet:read' | 'spreadsheet:write'
+  // OKRs
+  | 'okrs:read' | 'okrs:manage';
 
 const rolePermissions: Record<string, Permission[]> = {
   admin: [
@@ -40,6 +42,7 @@ const rolePermissions: Record<string, Permission[]> = {
     'planning:read', 'planning:create', 'planning:update', 'planning:delete',
     'costs:read', 'costs:manage',
     'spreadsheet:read', 'spreadsheet:write',
+    'okrs:read', 'okrs:manage',
   ],
   manager: [
     'projects:read', 'projects:create', 'projects:update',
@@ -53,6 +56,7 @@ const rolePermissions: Record<string, Permission[]> = {
     'planning:read', 'planning:create', 'planning:update',
     'costs:read',
     'spreadsheet:read',
+    'okrs:read', 'okrs:manage',
   ],
   member: [
     'projects:read',
@@ -63,6 +67,7 @@ const rolePermissions: Record<string, Permission[]> = {
     'settings:read',
     'planning:read',
     'spreadsheet:read',
+    'okrs:read',
   ],
 };
 

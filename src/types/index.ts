@@ -131,8 +131,25 @@ export interface Task {
   subtaskCount?: number;
   subtasks?: Task[];
   timeStatus?: 'on_track' | 'over_budget' | 'under_budget' | 'not_started';
+  // Jira-style issue tracking
+  type?: IssueType;
+  sprintId?: string;        // si no tiene, está en el backlog
   project?: Project;
   assignee?: User;
+}
+
+export type IssueType = 'epic' | 'story' | 'task' | 'bug';
+
+export interface Sprint {
+  id: string;
+  projectId: string;
+  name: string;
+  goal?: string;
+  status: 'planned' | 'active' | 'completed';
+  startDate?: string;
+  endDate?: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 export interface Job {
@@ -284,4 +301,81 @@ export interface PhaseWithApproval extends ProjectPhase {
   approvalFiles?: ApprovalFile[];
   tasks?: Task[];
   taskCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// OKRs (Objectives & Key Results)
+// Modelo inspirado en Viva Goals / Asana Goals: jerarquía de 3 niveles
+// (empresa → equipo → individuo), Objetivos con Resultados Clave medibles e
+// Iniciativas (el trabajo, vinculado a proyectos/tareas que TimeOS ya tiene).
+// El % de avance del Objetivo se calcula por roll-up ponderado de sus KR.
+// ---------------------------------------------------------------------------
+export type OkrLevel = 'company' | 'team' | 'individual';
+export type OkrPeriodType = 'annual' | 'quarterly';
+export type ObjectiveType = 'aspirational' | 'committed';
+export type ObjectiveStatus = 'draft' | 'on_track' | 'at_risk' | 'behind' | 'done';
+/** Tema estratégico que conecta la visión de la empresa con el objetivo. */
+export type StrategicTheme = 'blue_ocean' | 'red_ocean' | 'growth' | 'efficiency' | 'customer' | 'none';
+export type KeyResultType = 'metric' | 'binary';
+export type Confidence = 'on_track' | 'at_risk' | 'off_track';
+
+export interface Objective {
+  id: string;
+  title: string;
+  description?: string;
+  level: OkrLevel;
+  ownerId: string;
+  parentId?: string;        // alineación / cascada con un objetivo superior
+  period: string;           // p.ej. "Q3 2026" o "Anual 2026"
+  periodType: OkrPeriodType;
+  type: ObjectiveType;      // aspiracional (target 0.7) vs comprometido (1.0)
+  strategicTheme: StrategicTheme;
+  status: ObjectiveStatus;
+  progress: number;         // 0–100, CALCULADO (roll-up de KRs), no se ingresa
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface KeyResult {
+  id: string;
+  objectiveId: string;
+  title: string;
+  type: KeyResultType;      // métrico (de X a Y) o binario (hecho/no hecho)
+  unit?: string;            // %, $, clientes, ...
+  startValue: number;
+  targetValue: number;
+  currentValue: number;
+  weight: number;           // peso en el roll-up del objetivo (default 1)
+  confidence: Confidence;
+  ownerId?: string;
+  projectId?: string;       // KR vinculado a un proyecto de TimeOS
+  lastCheckinNote?: string;
+  lastCheckinAt?: number;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface Initiative {
+  id: string;
+  objectiveId: string;
+  keyResultId?: string;
+  title: string;
+  description?: string;
+  status: 'todo' | 'in_progress' | 'done';
+  projectId?: string;       // vínculo al trabajo real en TimeOS
+  taskId?: string;
+  ownerId?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface KeyResultWithScore extends KeyResult {
+  score: number;            // 0–1 derivado de start/current/target
+}
+
+export interface ObjectiveWithDetails extends Objective {
+  keyResults: KeyResultWithScore[];
+  initiatives: Initiative[];
+  owner?: User;
+  children?: ObjectiveWithDetails[];
 }
