@@ -14,6 +14,7 @@ import {
   createKeyResult,
   createInitiative,
   createSprint,
+  createOrganization,
   getUsers,
   updateUser,
   getProjects,
@@ -59,6 +60,12 @@ const sumHours = (h: Hours) => h.mon + h.tue + h.wed + h.thu + h.fri + h.sat + h
 // ---------------------------------------------------------------------------
 // Static catalogs
 // ---------------------------------------------------------------------------
+// Organización por defecto (multi-tenant): toda la data semilla pertenece a org_1.
+const DEFAULT_ORG = 'org_1';
+const organizations = [
+  { id: DEFAULT_ORG, name: 'Orvanta', slug: 'orvanta', plan: 'enterprise' as const, ownerId: 'user_1' },
+];
+
 const users = [
   { id: 'user_1', name: 'Ana García', email: 'ana.garcia@timeos.com', role: 'admin', password: 'admin123', isActive: true },
   { id: 'user_2', name: 'Carlos López', email: 'carlos.lopez@timeos.com', role: 'member', password: 'carlos123', isActive: true },
@@ -612,15 +619,20 @@ export async function seedDocumentStore() {
   // depende del filtrado server-side, la consistencia manda sobre la velocidad
   // del seed (acción de admin puntual).
 
-  // Users
+  // Organizations (multi-tenant): la org por defecto debe existir antes que los usuarios.
+  for (const org of organizations) {
+    try { await createOrganization(org); } catch { /* may exist */ }
+  }
+
+  // Users (todos pertenecen a la org por defecto)
   const existingUsers = await getUsers();
   const existingUserIds = new Set(existingUsers.map(u => u.id));
   for (const user of users) {
     try {
       if (existingUserIds.has(user.id)) {
-        await updateUser(user.id, { name: user.name, role: user.role, password: user.password, isActive: user.isActive });
+        await updateUser(user.id, { name: user.name, role: user.role, password: user.password, isActive: user.isActive, orgId: DEFAULT_ORG });
       } else {
-        await createUser(user);
+        await createUser({ ...user, orgId: DEFAULT_ORG });
       }
     } catch (error) {
       console.error('Error with user:', user.id, error);

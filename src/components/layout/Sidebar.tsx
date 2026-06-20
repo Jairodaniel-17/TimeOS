@@ -52,6 +52,7 @@ const navItems: Array<{
   { to: '/reports',       icon: BarChart3,       label: 'Reportes',       permission: 'reports:read' },
   { to: '/costs',         icon: DollarSign,      label: 'Costos',         permission: 'reports:costs' },
   { to: '/users',         icon: Users,           label: 'Usuarios',       permission: 'users:read' },
+  { to: '/settings/organization', icon: Building2, label: 'Organización',  permission: 'settings:read' },
   { to: '/documents',     icon: FolderOpen,      label: 'Documentos',     permission: null },
   { to: '/settings',      icon: Settings,        label: 'Configuración',  permission: 'settings:read' },
   { to: '/settings/roles',icon: Shield,          label: 'Roles y Permisos',permission: 'settings:update' },
@@ -63,7 +64,7 @@ const NAV_GROUPS = [
   { label: 'Estrategia', paths: ['/okrs'] },
   { label: 'Gestión',  paths: ['/approvals', '/tasks', '/board', '/sprints', '/planning', '/spreadsheet'] },
   { label: 'Análisis', paths: ['/resources', '/reports', '/costs'] },
-  { label: 'Sistema',  paths: ['/users', '/documents', '/settings', '/settings/roles'] },
+  { label: 'Sistema',  paths: ['/users', '/settings/organization', '/documents', '/settings', '/settings/roles'] },
 ];
 
 export function Sidebar() {

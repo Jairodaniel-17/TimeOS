@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       email: user.email,
       name: user.name,
       role: user.role,
+      orgId: user.orgId,
     });
 
     const { password: _, ...userWithoutPassword } = user;

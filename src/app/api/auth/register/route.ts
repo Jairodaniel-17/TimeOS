@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
       role: 'admin',
       password,
       isActive: true,
+      orgId,
     });
 
     // Best-effort welcome email — never block registration on delivery.

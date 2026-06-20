@@ -181,6 +181,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
+    // Auto-refresh ("near real-time" sin websockets): refresca el dashboard cada
+    // 30s, solo cuando la pestaña está visible, para no machacar al servidor.
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

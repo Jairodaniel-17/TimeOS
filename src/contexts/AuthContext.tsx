@@ -9,6 +9,7 @@ interface User {
   email: string;
   role: 'admin' | 'manager' | 'member';
   avatar?: string;
+  orgId?: string;
 }
 
 interface AuthContextType {
@@ -101,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.data.email,
           role: data.data.role,
           avatar: data.data.avatar,
+          orgId: data.data.orgId,
         };
         
         setUser(userData);

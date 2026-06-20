@@ -45,6 +45,7 @@ export interface UserDoc {
   avatar?: string;
   password?: string;
   isActive: boolean;
+  orgId?: string;        // organización a la que pertenece (multi-tenant)
   createdAt: number;
   updatedAt?: number;
 }
