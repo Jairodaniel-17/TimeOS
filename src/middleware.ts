@@ -5,8 +5,10 @@ import { verifyToken } from '@/lib/auth';
 const PUBLIC_API_ROUTES = [
   '/api/auth/login',
   '/api/auth/logout',
+  '/api/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
   '/api/init',
-  '/api/check-users',
 ];
 
 export async function middleware(request: NextRequest) {
@@ -41,6 +43,14 @@ export async function middleware(request: NextRequest) {
 
   // Protect destructive admin-only routes
   if (pathname.startsWith('/api/reset') && payload.role !== 'admin') {
+    return NextResponse.json(
+      { error: 'Forbidden: admin access required', success: false },
+      { status: 403 }
+    );
+  }
+
+  // /api/check-users can reset passwords to known defaults — admin only.
+  if (pathname.startsWith('/api/check-users') && payload.role !== 'admin') {
     return NextResponse.json(
       { error: 'Forbidden: admin access required', success: false },
       { status: 403 }

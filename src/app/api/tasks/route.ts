@@ -9,6 +9,7 @@ import {
   deleteTask,
   getProjects,
   getUsers,
+  logActivity,
   type TaskDoc
 } from '@/lib/luma-docs';
 
@@ -133,7 +134,15 @@ export async function POST(request: Request) {
       type,
       sprintId: sprintId || undefined,
     });
-    
+
+    await logActivity({
+      entityType: 'task',
+      entityId: id,
+      userId: body.actorId || body.assigneeId || 'system',
+      action: 'created',
+      message: name,
+    });
+
     return NextResponse.json({ data: task, success: true });
   } catch (error) {
     console.error('Error creating task:', error);
@@ -147,24 +156,57 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, ...updates } = body;
-    
+    const { id, actorId, ...updates } = body;
+
     if (!id) {
       return NextResponse.json(
         { error: 'ID is required', success: false },
         { status: 400 }
       );
     }
-    
+
+    const existing = await getTaskById(id);
+
     const task = await updateTask(id, updates);
-    
+
     if (!task) {
       return NextResponse.json(
         { error: 'Task not found', success: false },
         { status: 404 }
       );
     }
-    
+
+    if (existing) {
+      const userId: string =
+        actorId || (updates.assigneeId as string | undefined) || task.assigneeId || 'system';
+      const TRACKED_FIELDS: (keyof TaskDoc)[] = [
+        'name', 'description', 'type', 'priority', 'sprintId', 'estimatedHours',
+      ];
+
+      if ('status' in updates && updates.status !== existing.status) {
+        await logActivity({
+          entityType: 'task', entityId: id, userId, action: 'status',
+          from: existing.status, to: task.status,
+        });
+      }
+      if ('assigneeId' in updates && updates.assigneeId !== existing.assigneeId) {
+        await logActivity({
+          entityType: 'task', entityId: id, userId, action: 'assignee',
+          from: existing.assigneeId || '', to: task.assigneeId || '',
+        });
+      }
+      for (const field of TRACKED_FIELDS) {
+        if (field in updates && updates[field] !== existing[field]) {
+          await logActivity({
+            entityType: 'task', entityId: id, userId, action: 'field',
+            field: String(field),
+            from: existing[field] != null ? String(existing[field]) : '',
+            to: task[field] != null ? String(task[field]) : '',
+          });
+        }
+      }
+    }
+
     return NextResponse.json({ data: task, success: true });
   } catch (error) {
     console.error('Error updating task:', error);

@@ -140,6 +140,41 @@ export interface Task {
 
 export type IssueType = 'epic' | 'story' | 'task' | 'bug';
 
+export interface Comment {
+  id: string;
+  entityType: string;
+  entityId: string;
+  userId: string;
+  body: string;
+  createdAt: number;
+  updatedAt?: number;
+  user?: User;
+}
+
+export interface Activity {
+  id: string;
+  entityType: string;
+  entityId: string;
+  userId: string;
+  action: string;
+  field?: string;
+  from?: string;
+  to?: string;
+  message?: string;
+  createdAt: number;
+  user?: User;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  plan: 'free' | 'pro' | 'enterprise';
+  ownerId: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
 export interface Sprint {
   id: string;
   projectId: string;

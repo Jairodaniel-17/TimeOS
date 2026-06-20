@@ -3,26 +3,34 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
 import { Eye, EyeOff, ArrowRight, Clock, CheckCircle, BarChart3 } from 'lucide-react';
 
-export default function LoginPage() {
+export default function SignupPage() {
+  const [orgName, setOrgName]       = useState('');
+  const [name, setName]             = useState('');
   const [email, setEmail]           = useState('');
   const [password, setPassword]     = useState('');
   const [showPassword, setShowPass] = useState(false);
   const [error, setError]           = useState('');
   const [isLoading, setIsLoading]   = useState(false);
   const router = useRouter();
-  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
     try {
-      const ok = await login(email, password);
-      if (ok) { router.push('/'); }
-      else     { setError('Correo o contraseña incorrectos.'); }
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgName, name, email, password }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        router.push('/login?registered=1');
+      } else {
+        setError(json.error || 'No se pudo crear la cuenta.');
+      }
     } catch {
       setError('Error de conexión. Intenta de nuevo.');
     } finally {
@@ -36,22 +44,15 @@ export default function LoginPage() {
     { icon: BarChart3,    text: 'Reportes y costos en tiempo real' },
   ];
 
-  const testUsers = [
-    { role: 'Admin',   email: 'ana.garcia@timeos.com',    pass: 'admin123' },
-    { role: 'Usuario', email: 'carlos.lopez@timeos.com',  pass: 'carlos123' },
-  ];
-
   return (
     <div className="min-h-screen flex bg-redwood-page font-sans">
 
       {/* ── Left — Oracle-brand panel ── */}
       <div className="hidden lg:flex lg:w-[480px] xl:w-[520px] flex-col justify-between bg-oracle-sidebar px-10 xl:px-14 py-12 relative overflow-hidden">
-        {/* subtle ring decorations */}
         <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full border border-white/[.06]" />
         <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full border border-white/[.06]" />
         <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full border border-white/[.06]" />
 
-        {/* Brand mark */}
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-14">
             <div className="flex h-[42px] w-[42px] items-center justify-center rounded-xl bg-oracle-red font-extrabold text-white text-lg tracking-tighter">
@@ -64,12 +65,12 @@ export default function LoginPage() {
           </div>
 
           <h2 className="text-[32px] xl:text-[36px] font-bold text-white leading-[1.15] tracking-[-0.025em] mb-4">
-            Gestiona proyectos
+            Crea tu espacio
             <br />
-            <span className="text-white/60">con precisión</span>
+            <span className="text-white/60">en minutos</span>
           </h2>
           <p className="text-white/60 text-[15px] leading-[1.6] mb-10">
-            Control total de tiempos, costos y recursos. Diseñado para equipos exigentes.
+            Empieza gratis. Configura tu organización y empieza a gestionar tiempos hoy.
           </p>
 
           <div className="space-y-4">
@@ -89,11 +90,10 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* ── Right — Login form ── */}
+      {/* ── Right — Signup form ── */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-[400px]">
 
-          {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-oracle-sidebar font-extrabold text-white text-[15px]">
               T
@@ -103,10 +103,10 @@ export default function LoginPage() {
 
           <div className="mb-8">
             <h1 className="text-[28px] font-bold text-redwood-text tracking-[-0.025em] mb-2">
-              Bienvenido
+              Crear cuenta
             </h1>
             <p className="text-redwood-muted text-[15px] leading-[1.55]">
-              Ingresa tus credenciales para acceder.
+              Configura tu organización para empezar.
             </p>
           </div>
 
@@ -118,6 +118,36 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-1.5">
+              <label className="text-[13px] font-bold text-redwood-text">
+                Nombre de la organización
+              </label>
+              <input
+                type="text"
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
+                placeholder="Mi Empresa"
+                required
+                autoComplete="organization"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <label className="text-[13px] font-bold text-redwood-text">
+                Tu nombre
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full min-h-[40px] px-3 py-2 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
+                placeholder="Ana García"
+                required
+                autoComplete="name"
+              />
+            </div>
+
             <div className="grid gap-1.5">
               <label className="text-[13px] font-bold text-redwood-text">
                 Correo electrónico
@@ -143,9 +173,10 @@ export default function LoginPage() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className="w-full min-h-[40px] px-3 py-2 pr-10 rounded-[10px] border border-redwood-border bg-redwood-surface text-sm text-redwood-text placeholder:text-redwood-muted focus:outline-none focus:border-redwood-focus-ring focus:ring-2 focus:ring-redwood-focus-ring/20 transition-colors"
-                  placeholder="••••••••"
+                  placeholder="Mínimo 6 caracteres"
                   required
-                  autoComplete="current-password"
+                  minLength={6}
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -165,54 +196,23 @@ export default function LoginPage() {
               {isLoading ? (
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  Iniciando...
+                  Creando...
                 </span>
               ) : (
                 <>
-                  Iniciar sesión
+                  Crear cuenta
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
             </button>
-
-            <div className="flex items-center justify-between pt-1">
-              <Link
-                href="/forgot-password"
-                className="text-[13px] font-semibold text-redwood-primary hover:underline"
-              >
-                ¿Olvidaste tu contraseña?
-              </Link>
-              <Link
-                href="/signup"
-                className="text-[13px] font-semibold text-redwood-primary hover:underline"
-              >
-                Crear cuenta
-              </Link>
-            </div>
           </form>
 
-          {/* Test users */}
-          <div className="mt-8 rounded-[14px] border border-redwood-border bg-redwood-surface-soft p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[.08em] text-redwood-muted mb-3">
-              Usuarios de prueba
-            </p>
-            <div className="space-y-2">
-              {testUsers.map(u => (
-                <button
-                  key={u.email}
-                  type="button"
-                  onClick={() => { setEmail(u.email); setPassword(u.pass); }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-[10px] bg-redwood-surface border border-redwood-border hover:border-redwood-primary/50 hover:bg-redwood-selected-bg transition-all text-left group"
-                >
-                  <div>
-                    <span className="text-[11px] font-bold text-redwood-primary block">{u.role}</span>
-                    <span className="text-[11px] text-redwood-muted">{u.email}</span>
-                  </div>
-                  <ArrowRight className="h-3.5 w-3.5 text-redwood-muted opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="mt-6 text-center text-sm text-redwood-muted">
+            ¿Ya tienes cuenta?{' '}
+            <Link href="/login" className="font-semibold text-redwood-primary hover:underline">
+              Iniciar sesión
+            </Link>
+          </p>
         </div>
       </div>
     </div>

@@ -20,6 +20,10 @@ const COLLECTIONS = {
   KEY_RESULTS: 'key_results',
   INITIATIVES: 'initiatives',
   SPRINTS: 'sprints',
+  COMMENTS: 'comments',
+  ACTIVITY: 'activity',
+  ORGANIZATIONS: 'organizations',
+  PASSWORD_RESETS: 'password_resets',
 } as const;
 
 /**
@@ -1114,4 +1118,127 @@ export async function getBoardTasks(filter: { projectId?: string; sprintId?: str
   const f = buildFilter({ projectId: filter.projectId, sprintId: filter.sprintId });
   const docs = await luma.findDocs<TaskDoc>(COLLECTIONS.TASKS, f, 5000);
   return docs.map(d => d.doc);
+}
+
+// ===========================================================================
+// Comments — on tasks/issues (entityType:'task') and extensible to others.
+// ===========================================================================
+export interface CommentDoc {
+  id: string;
+  entityType: string;   // 'task' | 'project' | ...
+  entityId: string;
+  userId: string;
+  body: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export async function getComments(filter: { entityType?: string; entityId?: string }) {
+  const docs = await luma.findDocs<CommentDoc>(COLLECTIONS.COMMENTS, buildFilter({ entityType: filter.entityType, entityId: filter.entityId }), 2000);
+  return docs.map(d => d.doc).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function createComment(c: Omit<CommentDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: CommentDoc = { ...c, createdAt: now, updatedAt: now };
+  await luma.putDoc(COLLECTIONS.COMMENTS, c.id, doc);
+  return doc;
+}
+
+export async function deleteComment(id: string) {
+  await luma.deleteDoc(COLLECTIONS.COMMENTS, id);
+}
+
+// ===========================================================================
+// Activity log — append-only history of changes on an entity.
+// ===========================================================================
+export interface ActivityDoc {
+  id: string;
+  entityType: string;
+  entityId: string;
+  userId: string;
+  action: string;       // e.g. 'created', 'status', 'assignee', 'comment', 'field'
+  field?: string;
+  from?: string;
+  to?: string;
+  message?: string;
+  createdAt: number;
+}
+
+export async function getActivity(filter: { entityType?: string; entityId?: string }) {
+  const docs = await luma.findDocs<ActivityDoc>(COLLECTIONS.ACTIVITY, buildFilter({ entityType: filter.entityType, entityId: filter.entityId }), 2000);
+  return docs.map(d => d.doc).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function logActivity(a: Omit<ActivityDoc, 'id' | 'createdAt'>) {
+  const id = `act_${Date.now()}_${a.entityId}_${a.action}`;
+  const doc: ActivityDoc = { ...a, id, createdAt: Date.now() };
+  await luma.putDoc(COLLECTIONS.ACTIVITY, id, doc);
+  return doc;
+}
+
+// ===========================================================================
+// Organizations (multi-tenant foundation). Entities carry orgId; the default
+// org is 'org_1' for seeded data.
+// ===========================================================================
+export interface OrganizationDoc {
+  id: string;
+  name: string;
+  slug: string;
+  plan: 'free' | 'pro' | 'enterprise';
+  ownerId: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export async function getOrganizations() {
+  const docs = await luma.findDocs<OrganizationDoc>(COLLECTIONS.ORGANIZATIONS, undefined, 1000);
+  return docs.map(d => d.doc);
+}
+
+export async function getOrganizationById(id: string) {
+  const result = await luma.getDoc<OrganizationDoc>(COLLECTIONS.ORGANIZATIONS, id);
+  return result?.doc || null;
+}
+
+export async function getOrganizationBySlug(slug: string) {
+  const docs = await luma.findDocs<OrganizationDoc>(COLLECTIONS.ORGANIZATIONS, { slug }, 1);
+  return docs[0]?.doc || null;
+}
+
+export async function createOrganization(org: Omit<OrganizationDoc, 'createdAt' | 'updatedAt'>) {
+  const now = Date.now();
+  const doc: OrganizationDoc = { ...org, createdAt: now, updatedAt: now };
+  await luma.putDoc(COLLECTIONS.ORGANIZATIONS, org.id, doc);
+  return doc;
+}
+
+// ===========================================================================
+// Password reset tokens.
+// ===========================================================================
+export interface PasswordResetDoc {
+  id: string;          // the token
+  userId: string;
+  email: string;
+  expiresAt: number;
+  used: boolean;
+  createdAt: number;
+}
+
+export async function createPasswordReset(token: string, userId: string, email: string, ttlMs = 3600_000) {
+  const now = Date.now();
+  const doc: PasswordResetDoc = { id: token, userId, email, expiresAt: now + ttlMs, used: false, createdAt: now };
+  await luma.putDoc(COLLECTIONS.PASSWORD_RESETS, token, doc);
+  return doc;
+}
+
+export async function getPasswordReset(token: string) {
+  const result = await luma.getDoc<PasswordResetDoc>(COLLECTIONS.PASSWORD_RESETS, token);
+  return result?.doc || null;
+}
+
+export async function markPasswordResetUsed(token: string) {
+  const existing = await getPasswordReset(token);
+  if (!existing) return;
+  await luma.putDoc(COLLECTIONS.PASSWORD_RESETS, token, { ...existing, used: true });
 }

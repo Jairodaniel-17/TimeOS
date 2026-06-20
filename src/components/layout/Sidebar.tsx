@@ -26,6 +26,7 @@ import {
   Building2,
   Target,
   KanbanSquare,
+  Activity,
 } from 'lucide-react';
 import type { Permission } from '@/hooks/usePermissions';
 import { useEffect, useState } from 'react';
@@ -44,6 +45,7 @@ const navItems: Array<{
   { to: '/approvals',     icon: CheckCircle,     label: 'Aprobaciones',   permission: 'approvals:read' },
   { to: '/tasks',         icon: ListTodo,        label: 'Tareas',         permission: 'tasks:read' },
   { to: '/board',         icon: KanbanSquare,    label: 'Tablero',        permission: 'tasks:read' },
+  { to: '/sprints',       icon: Activity,        label: 'Sprints',        permission: 'tasks:read' },
   { to: '/planning',      icon: GanttChart,      label: 'Planificación',  permission: null },
   { to: '/spreadsheet',   icon: Calculator,      label: 'Hoja de Cálculo',permission: null },
   { to: '/resources',     icon: Users,           label: 'Recursos',       permission: 'resources:read' },
@@ -59,7 +61,7 @@ const navItems: Array<{
 const NAV_GROUPS = [
   { label: null,       paths: ['/', '/projects', '/clients', '/timesheet'] },
   { label: 'Estrategia', paths: ['/okrs'] },
-  { label: 'Gestión',  paths: ['/approvals', '/tasks', '/board', '/planning', '/spreadsheet'] },
+  { label: 'Gestión',  paths: ['/approvals', '/tasks', '/board', '/sprints', '/planning', '/spreadsheet'] },
   { label: 'Análisis', paths: ['/resources', '/reports', '/costs'] },
   { label: 'Sistema',  paths: ['/users', '/documents', '/settings', '/settings/roles'] },
 ];

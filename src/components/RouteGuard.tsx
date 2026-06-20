@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 // List of public routes that don't require authentication
-const publicRoutes = ['/login'];
+const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password'];
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isAuthenticated } = useAuth();
