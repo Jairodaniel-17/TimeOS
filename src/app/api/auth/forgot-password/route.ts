@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByEmail, createPasswordReset } from '@/lib/luma-docs';
 import { sendEmail, passwordResetEmail } from '@/lib/email';
+import { rateLimit, clientIp } from '@/lib/rate-limit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: NextRequest) {
   try {
+    const rl = rateLimit(`forgot:${clientIp(request)}`, 5, 60 * 60 * 1000);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Intenta más tarde.', success: false },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+      );
+    }
+
     const body = await request.json();
     const email = typeof body.email === 'string' ? body.email.trim() : '';
 

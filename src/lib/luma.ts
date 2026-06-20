@@ -82,6 +82,38 @@ export class LumaClient {
     throw lastErr instanceof Error ? lastErr : new Error('Luma request failed');
   }
 
+  // Blob / object storage (S3-like) — binary objects stored on disk by Luma,
+  // never inside JSON documents. bucket/key are single path segments.
+  private authHeader(): string {
+    return (this.headers as Record<string, string>)['Authorization'] || '';
+  }
+
+  async putBlob(bucket: string, key: string, body: Uint8Array | ArrayBuffer): Promise<{ bucket: string; key: string; size: number; etag: string }> {
+    const res = await fetch(`${this.baseUrl}/v1/blob/${encodeURIComponent(bucket)}/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      headers: { 'Authorization': this.authHeader(), 'Content-Type': 'application/octet-stream' },
+      body: body as BodyInit,
+    });
+    if (!res.ok) throw new Error(`putBlob failed: HTTP ${res.status}`);
+    return res.json();
+  }
+
+  async getBlob(bucket: string, key: string): Promise<ArrayBuffer | null> {
+    const res = await fetch(`${this.baseUrl}/v1/blob/${encodeURIComponent(bucket)}/${encodeURIComponent(key)}`, {
+      headers: { 'Authorization': this.authHeader() },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`getBlob failed: HTTP ${res.status}`);
+    return res.arrayBuffer();
+  }
+
+  async deleteBlob(bucket: string, key: string): Promise<void> {
+    await fetch(`${this.baseUrl}/v1/blob/${encodeURIComponent(bucket)}/${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': this.authHeader() },
+    }).catch(() => { /* best-effort */ });
+  }
+
   // SQL Operations
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     const response = await this.request<{ rows: T[] }>('/v1/sql/query', {

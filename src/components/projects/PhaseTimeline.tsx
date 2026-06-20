@@ -158,7 +158,7 @@ export function PhaseTimeline({ phases, onApprovePhase, canApprove }: PhaseTimel
                           {phase.approvalFiles.map(file => (
                             <a
                               key={file.id}
-                              href={`data:${file.type};base64,${file.data}`}
+                              href={file.data ? `data:${file.type};base64,${file.data}` : `/api/approval-files/${file.id}`}
                               download={file.name}
                               className="text-xs text-redwood-green underline hover:opacity-80"
                             >

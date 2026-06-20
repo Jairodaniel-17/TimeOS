@@ -738,23 +738,32 @@ export async function updatePhaseApproval(id: string, updates: Partial<Omit<Phas
   return doc;
 }
 
+export const APPROVAL_FILES_BUCKET = 'approval-files';
+
 export interface ApprovalFileDoc {
   id: string;
   phaseApprovalId: string;
   name: string;
   type: string;
   size: number;
-  data: string;
+  data?: string;        // legacy: base64 inline (archivos antiguos)
+  blobKey?: string;     // nuevo: clave en el blob store (los bytes viven fuera del doc)
   uploadedBy: string;
   uploadedAt: number;
 }
 
 export async function getApprovalFiles(phaseApprovalId: string) {
-  const docs = await luma.findDocs<ApprovalFileDoc>(COLLECTIONS.APPROVAL_FILES, undefined, 1000);
+  const docs = await luma.findDocs<ApprovalFileDoc>(COLLECTIONS.APPROVAL_FILES, { phaseApprovalId }, 1000);
+  // Devuelve solo metadata — los bytes se obtienen vía el endpoint de descarga,
+  // no embebidos en la lista (evita arrastrar base64 pesado).
   return docs
-    .map(d => d.doc)
-    .filter(f => f.phaseApprovalId === phaseApprovalId)
+    .map(({ doc }) => { const { data: _d, ...meta } = doc; return meta; })
     .sort((a, b) => b.uploadedAt - a.uploadedAt);
+}
+
+export async function getApprovalFileById(id: string) {
+  const result = await luma.getDoc<ApprovalFileDoc>(COLLECTIONS.APPROVAL_FILES, id);
+  return result?.doc || null;
 }
 
 export async function createApprovalFile(file: Omit<ApprovalFileDoc, 'uploadedAt'>) {
@@ -767,6 +776,11 @@ export async function createApprovalFile(file: Omit<ApprovalFileDoc, 'uploadedAt
 }
 
 export async function deleteApprovalFile(id: string) {
+  // Borra también el blob asociado (si lo tiene) para no dejar bytes huérfanos.
+  const existing = await getApprovalFileById(id);
+  if (existing?.blobKey) {
+    await luma.deleteBlob(APPROVAL_FILES_BUCKET, existing.blobKey);
+  }
   await luma.deleteDoc(COLLECTIONS.APPROVAL_FILES, id);
 }
 

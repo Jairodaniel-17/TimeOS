@@ -7,8 +7,10 @@ import {
   createApprovalFile,
   calculatePhaseCosts,
   createNotification,
-  getUserById
+  getUserById,
+  APPROVAL_FILES_BUCKET,
 } from '@/lib/luma-docs';
+import { luma } from '@/lib/luma';
 
 export async function GET(
   request: Request,
@@ -79,13 +81,20 @@ export async function POST(
     
     if (files && files.length > 0) {
       for (const file of files) {
+        const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        // Los bytes van al blob store (S3-like), no embebidos en el documento.
+        let blobKey: string | undefined;
+        if (typeof file.data === 'string' && file.data.length > 0) {
+          await luma.putBlob(APPROVAL_FILES_BUCKET, fileId, Buffer.from(file.data, 'base64'));
+          blobKey = fileId;
+        }
         await createApprovalFile({
-          id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: fileId,
           phaseApprovalId: approvalId,
           name: file.name,
           type: file.type,
           size: file.size,
-          data: file.data,
+          blobKey,
           uploadedBy: approvedBy,
         });
       }

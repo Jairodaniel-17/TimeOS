@@ -6,6 +6,7 @@ import {
   getOrganizationBySlug,
 } from '@/lib/luma-docs';
 import { sendEmail, welcomeEmail } from '@/lib/email';
+import { rateLimit, clientIp } from '@/lib/rate-limit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -21,6 +22,14 @@ function slugify(value: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const rl = rateLimit(`register:${clientIp(request)}`, 5, 60 * 60 * 1000);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Demasiados registros desde esta IP. Intenta más tarde.', success: false },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+      );
+    }
+
     const body = await request.json();
     const orgName = typeof body.orgName === 'string' ? body.orgName.trim() : '';
     const name = typeof body.name === 'string' ? body.name.trim() : '';

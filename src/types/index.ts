@@ -296,7 +296,8 @@ export interface ApprovalFile {
   name: string;
   type: string;
   size: number;
-  data: string;
+  data?: string;        // legacy base64 inline
+  blobKey?: string;     // nuevo: bytes en el blob store
   uploadedBy: string;
   uploadedAt: number;
 }

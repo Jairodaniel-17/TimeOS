@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { 
+import {
   getApprovalFiles,
   createApprovalFile,
-  deleteApprovalFile
+  deleteApprovalFile,
+  APPROVAL_FILES_BUCKET,
 } from '@/lib/luma-docs';
+import { luma } from '@/lib/luma';
 
 export async function GET(request: Request) {
   try {
@@ -27,17 +29,27 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { phaseApprovalId, name, type, size, data, uploadedBy } = body;
-    
+
+    const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+
+    // Los bytes (base64 del cliente) van al blob store, NO dentro del documento.
+    let blobKey: string | undefined;
+    if (typeof data === 'string' && data.length > 0) {
+      const bytes = Buffer.from(data, 'base64');
+      await luma.putBlob(APPROVAL_FILES_BUCKET, id, bytes);
+      blobKey = id;
+    }
+
     const file = await createApprovalFile({
-      id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id,
       phaseApprovalId,
       name,
       type,
       size,
-      data,
+      blobKey,
       uploadedBy,
     });
-    
+
     return NextResponse.json({ data: file, success: true });
   } catch (error) {
     console.error('Error creating approval file:', error);
