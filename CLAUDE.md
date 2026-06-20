@@ -5,68 +5,80 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev        # Dev server
+npm run dev        # Dev server (hot reload; ideal para iterar)
 npm run build      # Production build
+npm start          # Production server (más rápido que dev; sin hot reload)
 npm run lint       # ESLint
-npx tsc --noEmit   # Type check without emitting
+npm test           # Vitest (tests unitarios)
+npx tsc --noEmit   # Type check
 ```
 
-No test suite is configured. Validate changes by running the dev server and exercising the UI.
+Before any PR: `npx tsc --noEmit`, `npm run lint` (0 errores) y `npm test`. Hay además 73 tests e2e de Playwright (`npx playwright test`, requiere la app corriendo).
+
+## Coding discipline (ponytail)
+
+Escribe solo lo que la tarea necesita. Escalera antes de codear: ¿hace falta? → stdlib → feature nativa → dependencia ya instalada → una línea → el mínimo que funcione. **Nunca** recortar validación, manejo de errores, seguridad ni accesibilidad. Código pequeño porque es suficiente, no por golf.
 
 ## Architecture
 
-**TimeOS** is a Next.js 16 App Router project (TypeScript) that replaces Smartsheet. All authenticated pages live under `src/app/(main)/`. Public routes: `/login`.
+**TimeOS** es un Next.js 16 App Router (TypeScript), open-source y self-hostable, que combina gestión de proyectos + tiempos/costos + OKRs + tablero ágil (Jira + PSA en uno). Páginas autenticadas bajo `src/app/(main)/`. Rutas públicas: `/login`, `/signup`, `/forgot-password`, `/reset-password`.
 
-### Data layer — Luma API
+### Data layer — Luma
 
-There is no local database. All persistence goes through Luma, a hosted API that exposes both SQL and a NoSQL document store:
+No hay base de datos local. Toda la persistencia va a **Luma** (motor convergente en Rust; repo abierto `rust-kiss-vdb`). Se autohospeda: compila `luma serve` (o usa el binario del release) escuchando en `:1234`. La app apunta por **IP** (`LUMA_API_URL=http://127.0.0.1:1234`) → sin dependencia de DNS.
 
-- `src/lib/luma.ts` — `LumaClient` wrapping SQL (`query`/`exec`) and document store (`getCollection`, `insertDocument`, `updateDocument`, `deleteDocument`) plus a key-value state API.
-- `src/lib/luma-docs.ts` — higher-level helpers for each collection (users, projects, tasks, timeEntries, resources, allocations, approvals, projectPhases, phaseApprovals, approvalFiles, clients, notifications).
-- `src/lib/db.ts` — SQL schema + seed data; call `POST /api/init` to initialize and `POST /api/reset` to wipe and re-seed.
+- `src/lib/luma.ts` — `LumaClient`: SQL (`query`/`exec`), document store (`putDoc`/`getDoc`/`findDocs`/`deleteDoc`), state KV, **blobs** (`putBlob`/`getBlob`/`deleteBlob`, almacenamiento tipo S3). Incluye **retry idempotente** ante 5xx/red y caché en memoria (30s). Credenciales SOLO por env (`LUMA_API_URL`, `LUMA_API_KEY`); sin fallback hardcodeado.
+- `src/lib/luma-docs.ts` — helpers por colección. **IMPORTANTE: filtran server-side** vía `buildFilter(...)` + `findDocs(col, filter, limit)` (no traer-todo-y-filtrar-en-JS). Colecciones: users, projects, tasks, time_entries, task_time_entries, resources, allocations, approvals, project_phases, phase_approvals, approval_files, clients, notifications, **objectives, key_results, initiatives, sprints, comments, activity, organizations, password_resets**.
+- `src/lib/seed-docs.ts` — data de prueba anclada a la semana actual. `POST /api/init` (público) inicializa+siembra; `POST /api/reset` (admin) borra y resiembra. **Escrituras del seed son SECUENCIALES a propósito** — escrituras concurrentes en ráfaga corrompen el índice `find` de Luma.
 
-Approval file attachments are stored as base64 strings inside Luma documents (recommended max 5 MB per file).
+Los **adjuntos** de aprobación ya NO son base64 en el documento: los bytes viven en el **blob store** (`bucket approval-files`, ver `APPROVAL_FILES_BUCKET`); el doc guarda `blobKey`. Descarga vía `GET /api/approval-files/[id]`.
 
 ### Auth
 
-- Login: `POST /api/auth/login` validates credentials against the Luma users collection.
-- Session is kept in **localStorage** (`timeos_user`), read by `AuthContext` (`src/contexts/AuthContext.tsx`).
-- `RouteGuard` (`src/components/RouteGuard.tsx`) wraps the `(main)` layout and redirects unauthenticated visitors to `/login`.
+- `POST /api/auth/login` valida contra la colección users; emite un **JWT httpOnly cookie** (`timeos_session`, 8h, firmado con `JWT_SECRET`) y guarda el usuario en **localStorage** (`timeos_user`).
+- `src/middleware.ts` verifica el JWT para proteger `/api/*` (salvo `PUBLIC_API_ROUTES`: login, register, forgot/reset-password, init); `/api/reset` y `/api/check-users` exigen rol admin.
+- `src/lib/auth.ts` — firma/verifica JWT. **`JWT_SECRET` es obligatorio en producción** (lanza error si falta/<32 chars; fallback inseguro solo en dev).
+- `AuthContext` (`src/contexts/AuthContext.tsx`): expone `user` (incl. `orgId`) e intercepta `fetch` global → ante 401 limpia sesión y redirige a `/login` (sincroniza la sesión cliente con la cookie expirada).
+- `RouteGuard` (`src/components/RouteGuard.tsx`) protege el layout `(main)`.
+- Self-serve: `/signup` (crea organización + admin), `/forgot-password` + `/reset-password` (vía `src/lib/email.ts`, que usa `RESEND_API_KEY` si está, o loguea el link en dev).
+- Rate-limiting (`src/lib/rate-limit.ts`) en login/register/forgot.
 
-Test credentials: `ana.garcia@timeos.com` / `admin123` (admin), `carlos.lopez@timeos.com` / `carlos123` (member).
+Credenciales de prueba: `ana.garcia@timeos.com` / `admin123` (admin), `carlos.lopez@timeos.com` / `carlos123` (member).
+
+### Multi-tenancy
+
+Fundación: colección `organizations` + `orgId` en users (en el JWT y AuthContext); el signup crea una org; `/settings/organization` la gestiona. PENDIENTE: scopear TODAS las colecciones por `orgId` en cada query (retrofit no hecho).
 
 ### Permissions
 
-`src/hooks/usePermissions.ts` returns `{ hasPermission, hasAnyPermission, hasAllPermissions, isAdmin, isManager, isMember }` derived from the role stored in AuthContext.
+`src/hooks/usePermissions.ts` → `{ hasPermission, hasAnyPermission, hasAllPermissions, isAdmin, isManager, isMember }` según el rol.
+- **admin** — todo. **manager** — projects, tasks, approvals, costs, resources, timesheets, phases:approve, planning, okrs:manage. **member** — timesheets propios, lectura, okrs:read.
 
-Roles and their access:
-- **admin** — all permissions
-- **manager** — projects, tasks, approvals, costs, resources, timesheets, phases:approve
-- **member** — timesheets only (own entries)
+Usa `<PermissionGate permission="...">` / `<AnyPermissionGate permissions={[...]}>`.
 
-Use `<PermissionGate permission="...">` or `<AnyPermissionGate permissions={[...]}>` for conditional UI rendering.
+### Módulos / páginas
+
+Dashboard (con panel "Equipo" y auto-refresh 30s), Proyectos (+detalle con fases), Tareas, **Tablero** Kanban (drag&drop, tipos de issue, detalle de issue con comentarios + log de actividad), **Sprints** (reportes burndown/velocity), Timesheet (worklog "qué hice" + historial), Aprobaciones (multi-estado, ve el worklog), **OKRs** (árbol de alineación, KRs, check-ins, iniciativas), Recursos, Reportes, Costos, Clientes, Documentos, Notificaciones, Usuarios, Organización, Configuración, Hoja de cálculo.
 
 ### API routes
 
-All routes are under `src/app/api/`. They follow a consistent response envelope: `{ data?: T, error?: string, success: boolean }`.
-
-Notable patterns:
-- Dynamic project routes: `/api/projects/[id]`, `/api/projects/[id]/phases`, `/api/projects/[id]/phases/[phaseId]/approval`
-- All API handlers call Luma directly — there is no ORM or intermediate service layer.
+Bajo `src/app/api/`, envelope `{ data?, error?, success }`. Llaman a Luma directo (sin ORM). Incluye `/api/okrs`(+`/[id]`), `/api/key-results`, `/api/initiatives`, `/api/sprints`, `/api/comments`, `/api/activity`, `/api/organizations`, `/api/auth/{login,logout,register,forgot-password,reset-password}`, `/api/approval-files`(+`/[id]` descarga), `/api/tasks?board=true` (lista plana para el tablero).
 
 ### Project phases
 
-Every project has exactly 10 fixed phases (defined as `PROJECT_PHASES` in `src/types/index.ts`). Phase IDs in order: `activity`, `prototype_delivery`, `prototype_presentation`, `prototype_approval`, `development_testing`, `sb_delivery`, `client_testing`, `production_release`, `client_confirmation`, `closure`.
-
-Phase approvals capture call evidence (date, time, contact, notes) plus file attachments stored in the `approval_files` collection.
+Cada proyecto tiene 10 fases fijas (`PROJECT_PHASES` en `src/types/index.ts`): `activity`, `prototype_delivery`, `prototype_presentation`, `prototype_approval`, `development_testing`, `sb_delivery`, `client_testing`, `production_release`, `client_confirmation`, `closure`. Las aprobaciones capturan evidencia de llamada + adjuntos (blob store).
 
 ### UI
 
-- Tailwind CSS v4 with custom CSS variables for theming (`--bg-base`, `--text-primary`, etc.) defined in `src/app/globals.css`. Dark mode is toggled via `data-theme` on `<html>`.
-- Custom components in `src/components/ui/` (Button, Card, Input, Badge, Tabs). No UI library (no shadcn, no MUI).
-- Icons: Lucide React.
-- Gantt: `gantt-task-react`. Spreadsheet: Luckysheet (loaded client-side only). Formula engine: HyperFormula.
+- Tailwind v4 con variables CSS (tokens Redwood: `--bg-base`, `--text-primary`, etc.) en `src/app/globals.css`; dark mode vía `data-theme` en `<html>` (con `suppressHydrationWarning`).
+- Componentes propios en `src/components/ui/` (Button con prop `loading`, Card, Input, Textarea, Badge, Tabs). Sin librería de UI.
+- Iconos Lucide. Gantt: `gantt-task-react` (impl propia en `GanttChart.tsx`; parsea fechas en local, no UTC). Spreadsheet: Luckysheet (client-only). Fórmulas: HyperFormula.
+- Acciones async muestran spinner/disable (patrón `loading={submitting}`).
 
 ### Key types
 
-All domain models are in `src/types/index.ts`: `User`, `Project`, `Task`, `TimeEntry`, `Resource`, `Allocation`, `Approval`, `ProjectPhase`, `PhaseApproval`, `ApprovalFile`, `Client`, `Notification`.
+En `src/types/index.ts`: `User`, `Project`, `Task` (+`type`/`sprintId`), `TimeEntry`, `Resource`, `Allocation`, `Approval`, `ProjectPhase`, `PhaseApproval`, `ApprovalFile`, `Client`, `Notification`, `Sprint`, `IssueType`, `Comment`, `Activity`, `Organization`, `Objective`, `KeyResult`, `Initiative`.
+
+### Env vars
+
+Ver `.env.example`. Requeridas: `LUMA_API_URL`, `LUMA_API_KEY`, `JWT_SECRET` (prod). Opcionales: `RESEND_API_KEY`, `EMAIL_FROM` (email real). `.env.local` está gitignored.
