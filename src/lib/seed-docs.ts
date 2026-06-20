@@ -68,6 +68,12 @@ const users = [
   { id: 'user_6', name: 'Andrés Rejas', email: 'andres.rejas@orvanta.com', role: 'manager', password: 'andres123', isActive: true },
   { id: 'user_7', name: 'Edson Alvarado', email: 'edson.alvarado@orvanta.com', role: 'member', password: 'edson123', isActive: true },
   { id: 'user_8', name: 'Jairo Mendoza', email: 'jairo.mendoza@orvanta.com', role: 'admin', password: 'jairo123', isActive: true },
+  // Segundo manager (PM) para cubrir aprobaciones/objetivos de equipo.
+  { id: 'user_9', name: 'Lucía Fernández', email: 'lucia.fernandez@timeos.com', role: 'manager', password: 'lucia123', isActive: true },
+  // Member SIN recurso asociado (caso "no monitoreado": registra horas pero no tiene tarifa/capacidad).
+  { id: 'user_10', name: 'Diego Torres', email: 'diego.torres@timeos.com', role: 'member', password: 'diego123', isActive: true },
+  // Usuario INACTIVO (no puede iniciar sesión; aparece en la lista como deshabilitado).
+  { id: 'user_11', name: 'Rosa Núñez', email: 'rosa.nunez@timeos.com', role: 'member', password: 'rosa123', isActive: false },
 ];
 
 const clients = [
@@ -76,6 +82,9 @@ const clients = [
   { id: 'client_3', name: 'DataCorp', contact: 'Raj Patel', email: 'raj.patel@datacorp.com', phone: '+1 555-0190' },
   { id: 'client_4', name: 'Northwind Retail', contact: 'Sofía Méndez', email: 'sofia@northwind.com', phone: '+34 600-112-233' },
   { id: 'client_5', name: 'Globex', contact: 'Hank Scorpio', email: 'hank@globex.com', phone: '+1 555-0177' },
+  { id: 'client_6', name: 'Initech', contact: 'Bill Lumbergh', email: 'bill@initech.com', phone: '+1 555-0199' },
+  // Cliente con datos mínimos (solo nombre) para probar UI con campos opcionales vacíos.
+  { id: 'client_7', name: 'Cliente Minimal' },
 ];
 
 const projects = [
@@ -86,6 +95,16 @@ const projects = [
   { id: 'proj_5', name: 'Migración Cloud', code: 'MIG-005', client: 'Northwind Retail', billable: true, status: 'active' as const, startDate: isoOffset(-28), endDate: isoOffset(14), budget: 15000, budgetHours: 160, hourlyRate: 105, currency: 'USD', progress: 60 },
   { id: 'proj_6', name: 'Rediseño Web Corporativa', code: 'WEB-006', client: 'Acme Corp', billable: true, status: 'completed' as const, startDate: isoOffset(-120), endDate: isoOffset(-30), budget: 18000, budgetHours: 180, hourlyRate: 100, currency: 'USD', progress: 100 },
   { id: 'proj_7', name: 'Plataforma E-learning', code: 'EDU-007', client: 'TechStart', billable: true, status: 'on_hold' as const, startDate: isoOffset(-10), endDate: isoOffset(70), budget: 40000, budgetHours: 420, hourlyRate: 110, currency: 'USD', progress: 8 },
+  // Proyecto ARCHIVADO (estado archived).
+  { id: 'proj_8', name: 'Sitio Legacy 2024', code: 'LEG-008', client: 'Initech', billable: true, status: 'archived' as const, startDate: isoOffset(-300), endDate: isoOffset(-180), budget: 12000, budgetHours: 120, hourlyRate: 100, currency: 'USD', progress: 100 },
+  // Proyecto NO FACTURABLE (interno) + sin cliente.
+  { id: 'proj_9', name: 'Mejoras Internas DevEx', code: 'INT-009', client: undefined, billable: false, status: 'active' as const, startDate: isoOffset(-7), endDate: isoOffset(63), budget: 8000, budgetHours: 100, hourlyRate: 0, currency: 'USD', progress: 20 },
+  // Proyecto SOBRE PRESUPUESTO (budget bajo + actualCost/actualHours altos forzados).
+  { id: 'proj_10', name: 'Soporte Crítico Acme', code: 'SUP-010', client: 'Acme Corp', billable: true, status: 'active' as const, startDate: isoOffset(-45), endDate: isoOffset(7), budget: 6000, budgetHours: 60, hourlyRate: 120, currency: 'USD', progress: 75, actualCost: 9450, actualHours: 90, profit: -3450, profitMargin: -57.5 },
+  // Proyecto NO INICIADO (progress 0, fechas en el futuro).
+  { id: 'proj_11', name: 'Rediseño Marca Globex', code: 'BRD-011', client: 'Globex', billable: true, status: 'active' as const, startDate: isoOffset(14), endDate: isoOffset(84), budget: 30000, budgetHours: 300, hourlyRate: 110, currency: 'USD', progress: 0 },
+  // Segundo proyecto on_hold con cliente minimal.
+  { id: 'proj_12', name: 'Piloto IoT', code: 'IOT-012', client: 'Cliente Minimal', billable: true, status: 'on_hold' as const, startDate: isoOffset(-21), endDate: isoOffset(42), budget: 22000, budgetHours: 220, hourlyRate: 115, currency: 'USD', progress: 12 },
 ];
 
 const resources = [
@@ -94,6 +113,9 @@ const resources = [
   { id: 'res_3', userId: 'user_4', capacity: 40, skills: ['Python', 'SQL', 'Backend'], hourlyRate: 50, monthlySalary: 8000, currency: 'USD' },
   { id: 'res_4', userId: 'user_5', capacity: 40, skills: ['Testing', 'QA', 'Automation'], hourlyRate: 38, monthlySalary: 6080, currency: 'USD' },
   { id: 'res_5', userId: 'user_7', capacity: 40, skills: ['DevOps', 'AWS', 'CI/CD'], hourlyRate: 52, monthlySalary: 8320, currency: 'USD' },
+  // Recurso del usuario inactivo (sigue existiendo el registro de costo histórico).
+  { id: 'res_6', userId: 'user_11', capacity: 40, skills: ['Data', 'ETL'], hourlyRate: 44, monthlySalary: 7040, currency: 'USD' },
+  // NOTA: user_10 (Diego Torres) NO tiene recurso a propósito — caso "miembro sin tarifa".
 ];
 
 // ---------------------------------------------------------------------------
@@ -107,7 +129,7 @@ interface SeedTask {
   id: string; projectId: string; parentId?: string; name: string; description?: string;
   assigneeId?: string; startDate: string; endDate: string; estimatedHours: number;
   actualHours: number; progress: number; priority: Priority; status: Status; dependencies: string[];
-  type: IssueType; sprintId?: string;
+  type: IssueType; sprintId?: string; isMilestone?: boolean;
 }
 const SUB_TYPES: IssueType[] = ['story', 'task', 'bug', 'task'];
 
@@ -229,18 +251,80 @@ const tasks: SeedTask[] = [
       { name: 'Validación y cutover', days: 5, est: 40, prog: 30, prio: 'high' },
     ] },
   ]),
+  // E-learning (on_hold) — su board debe tener cards aunque el proyecto esté en pausa.
+  ...buildProjectTasks('proj_7', -10, ['user_3', 'user_2'], [
+    { epic: 'Definición de cursos', subs: [
+      { name: 'Estructura de currículo', days: 5, est: 30, prog: 20, prio: 'medium' },
+      { name: 'Storyboards de lecciones', days: 7, est: 40, prog: 0, prio: 'low' },
+    ] },
+  ]),
+  // Mejoras Internas DevEx (no facturable) — varias prioridades low.
+  ...buildProjectTasks('proj_9', -7, ['user_7', 'user_4', 'user_2'], [
+    { epic: 'Tooling interno', subs: [
+      { name: 'Plantillas de PR', days: 3, est: 12, prog: 100, prio: 'low' },
+      { name: 'Script de seed local', days: 4, est: 16, prog: 50, prio: 'low' },
+      { name: 'Dashboard de métricas internas', days: 6, est: 30, prog: 0, prio: 'medium' },
+    ] },
+  ]),
+  // Soporte Crítico Acme (sobre presupuesto) — muchos bugs.
+  ...buildProjectTasks('proj_10', -45, ['user_4', 'user_5'], [
+    { epic: 'Incidentes producción', subs: [
+      { name: 'Hotfix caída de login', days: 2, est: 12, prog: 100, prio: 'high' },
+      { name: 'Fuga de memoria en API', days: 5, est: 30, prog: 80, prio: 'high' },
+      { name: 'Errores de facturación', days: 6, est: 36, prog: 60, prio: 'high' },
+    ] },
+  ]),
+  // Piloto IoT (on_hold) — board con cards.
+  ...buildProjectTasks('proj_12', -21, ['user_3', 'user_7'], [
+    { epic: 'Prueba de concepto', subs: [
+      { name: 'Selección de sensores', days: 4, est: 20, prog: 40, prio: 'medium' },
+      { name: 'Gateway de ingesta', days: 7, est: 40, prog: 10, prio: 'medium' },
+    ] },
+  ]),
 ];
+
+// ---------------------------------------------------------------------------
+// Tareas de borde — cubren estados que el generador no produce: milestone,
+// tarea vencida (overdue), sin asignar, prioridad explícita, todos los tipos
+// de issue (epic/story/task/bug) y dependencias cruzadas.
+// ---------------------------------------------------------------------------
+const extraTasks: SeedTask[] = [
+  // Milestone (hito) — duración de 1 día, sin progreso, en Portal Clientes.
+  { id: 'proj_1_ms_launch', projectId: 'proj_1', name: 'Hito: Lanzamiento beta', description: 'Milestone de lanzamiento beta a usuarios piloto.', startDate: isoOffset(7), endDate: isoOffset(7), estimatedHours: 0, actualHours: 0, progress: 0, priority: 'high', status: 'todo', dependencies: ['proj_1_e2'], type: 'task', isMilestone: true },
+  // Tarea VENCIDA (overdue): fecha fin en el pasado y status != done.
+  { id: 'proj_2_overdue_qa', projectId: 'proj_2', name: 'Pruebas de regresión móvil', description: 'QA pendiente, ya pasó su fecha límite.', assigneeId: 'user_5', startDate: isoOffset(-14), endDate: isoOffset(-3), estimatedHours: 24, actualHours: 8, progress: 30, priority: 'high', status: 'in_progress', dependencies: [], type: 'bug' },
+  // Tarea SIN ASIGNAR + prioridad low + backlog (sin sprint).
+  { id: 'proj_2_unassigned_doc', projectId: 'proj_2', name: 'Documentar API pública', description: 'Sin responsable asignado todavía.', startDate: isoOffset(3), endDate: isoOffset(10), estimatedHours: 16, actualHours: 0, progress: 0, priority: 'low', status: 'todo', dependencies: [], type: 'story' },
+  // Bug de alta prioridad EN PROGRESO en Dashboard Analytics, con dependencia.
+  { id: 'proj_4_bug_chart', projectId: 'proj_4', name: 'Bug: gráfica no refresca en tiempo real', description: 'Bug reportado por el cliente.', assigneeId: 'user_3', startDate: isoOffset(-2), endDate: isoOffset(2), estimatedHours: 10, actualHours: 6, progress: 60, priority: 'high', status: 'in_progress', dependencies: ['proj_4_e1_t1'], type: 'bug' },
+  // Story DONE de baja prioridad en Integración NetSuite.
+  { id: 'proj_3_story_logs', projectId: 'proj_3', name: 'Logging básico del conector', description: 'Completada.', assigneeId: 'user_7', startDate: isoOffset(-12), endDate: isoOffset(-8), estimatedHours: 8, actualHours: 8, progress: 100, priority: 'low', status: 'done', dependencies: [], type: 'story' },
+  // Tarea overdue adicional, sin asignar, en proyecto sobre presupuesto.
+  { id: 'proj_10_overdue_inc', projectId: 'proj_10', name: 'Postmortem de incidentes', description: 'Vencida, sin responsable.', startDate: isoOffset(-9), endDate: isoOffset(-2), estimatedHours: 12, actualHours: 0, progress: 0, priority: 'medium', status: 'todo', dependencies: [], type: 'task' },
+];
+tasks.push(...extraTasks);
 
 // Sprints (Scrum) para Portal Clientes, y asignación de issues al sprint activo.
 const sprints: Parameters<typeof createSprint>[0][] = [
   { id: 'sprint_p1_1', projectId: 'proj_1', name: 'Sprint 1 · Fundamentos', goal: 'Login, dashboard y base de APIs', status: 'completed', startDate: isoOffset(-35), endDate: isoOffset(-21) },
   { id: 'sprint_p1_2', projectId: 'proj_1', name: 'Sprint 2 · Funcionalidad core', goal: 'Reportes, APIs de negocio y QA inicial', status: 'active', startDate: isoOffset(-14), endDate: isoOffset(0) },
+  // Sprint PLANIFICADO (futuro) en Portal Clientes — cubre el estado 'planned'.
+  { id: 'sprint_p1_3', projectId: 'proj_1', name: 'Sprint 3 · Cierre', goal: 'QA final y pase a producción', status: 'planned', startDate: isoOffset(1), endDate: isoOffset(14) },
   { id: 'sprint_p2_1', projectId: 'proj_2', name: 'Sprint 1 · Discovery', goal: 'Research y wireframes', status: 'active', startDate: isoOffset(-21), endDate: isoOffset(-7) },
+  // Más proyectos con su propio sprint.
+  { id: 'sprint_p4_1', projectId: 'proj_4', name: 'Sprint 1 · Datos', goal: 'Modelo de datos y primeras gráficas', status: 'active', startDate: isoOffset(-7), endDate: isoOffset(7) },
+  { id: 'sprint_p10_1', projectId: 'proj_10', name: 'Sprint 1 · Estabilización', goal: 'Resolver incidentes críticos', status: 'completed', startDate: isoOffset(-30), endDate: isoOffset(-16) },
 ];
 // Issues del épico 2 de Portal Clientes → sprint activo; los del épico 3 quedan en backlog.
+// Algunos issues van a sprints activos/planificados; otros se quedan en backlog (sin sprintId).
 tasks.forEach(t => {
   if (t.projectId === 'proj_1' && t.id.includes('_e2')) t.sprintId = 'sprint_p1_2';
+  if (t.projectId === 'proj_1' && t.id === 'proj_1_ms_launch') t.sprintId = 'sprint_p1_3'; // milestone en sprint planificado
   if (t.projectId === 'proj_2' && t.id.includes('_e1')) t.sprintId = 'sprint_p2_1';
+  if (t.projectId === 'proj_4' && t.id.includes('_e1')) t.sprintId = 'sprint_p4_1';
+  if (t.projectId === 'proj_4' && t.id === 'proj_4_bug_chart') t.sprintId = 'sprint_p4_1';
+  if (t.projectId === 'proj_10' && t.id.includes('_e1')) t.sprintId = 'sprint_p10_1';
+  // proj_2_overdue_qa, proj_2_unassigned_doc, proj_3_*, proj_10_overdue_inc quedan en backlog.
 });
 
 // ---------------------------------------------------------------------------
@@ -250,7 +334,7 @@ tasks.forEach(t => {
 // ---------------------------------------------------------------------------
 interface MemberProfile {
   userId: string;
-  rows: { projectId: string; activity: string; notes: string; billable: boolean; weekday: Hours }[];
+  rows: { projectId: string; activity: string; notes?: string; billable: boolean; weekday: Hours }[];
 }
 
 const profiles: MemberProfile[] = [
@@ -274,10 +358,18 @@ const profiles: MemberProfile[] = [
     { projectId: 'proj_3', activity: 'DevOps / CI', billable: false, notes: 'Pipeline de CI para el conector y entorno de staging.', weekday: { mon: 4, tue: 6, wed: 6, thu: 6, fri: 4, sat: 0, sun: 0 } },
     { projectId: 'proj_5', activity: 'Infra Cloud', billable: true, notes: 'Aprovisionamiento de la infraestructura de cutover en AWS.', weekday: { mon: 4, tue: 2, wed: 2, thu: 2, fri: 0, sat: 0, sun: 0 } },
   ] },
+  // Miembro SIN recurso (user_10): registra horas; algunas filas SIN notas; incluye
+  // un día con >12h (sábado 13h) para disparar la alerta de sobretiempo del timesheet.
+  { userId: 'user_10', rows: [
+    { projectId: 'proj_9', activity: 'Tooling interno', billable: false, weekday: { mon: 8, tue: 8, wed: 8, thu: 8, fri: 6, sat: 13, sun: 0 } },
+    { projectId: 'proj_10', activity: 'Soporte de incidentes', billable: true, notes: 'Guardia de fin de semana por incidente crítico.', weekday: { mon: 0, tue: 0, wed: 0, thu: 0, fri: 2, sat: 0, sun: 4 } },
+  ] },
 ];
 
 // Per week-offset: the lifecycle status of that week's timesheet + approval.
 const weekPlan: { offset: number; entryStatus: 'draft' | 'pending' | 'approved' | 'rejected'; approval?: 'pending' | 'approved' | 'rejected' | 'changes_requested'; comment?: string }[] = [
+  { offset: -6, entryStatus: 'approved', approval: 'approved' },
+  { offset: -5, entryStatus: 'rejected', approval: 'rejected', comment: 'Horas duplicadas con otro proyecto; corregir y reenviar.' }, // estado 'rejected' (distinto de changes_requested)
   { offset: -4, entryStatus: 'approved', approval: 'approved' },
   { offset: -3, entryStatus: 'rejected', approval: 'changes_requested', comment: 'Falta detallar las horas del proyecto Integración NetSuite del jueves.' },
   { offset: -2, entryStatus: 'approved', approval: 'approved' },
@@ -301,7 +393,8 @@ profiles.forEach((profile, pIdx) => {
         wed: Math.round(row.weekday.wed * factor),
         thu: Math.round(row.weekday.thu * factor),
         fri: Math.round(row.weekday.fri * factor),
-        sat: 0, sun: 0,
+        sat: Math.round(row.weekday.sat * factor),
+        sun: Math.round(row.weekday.sun * factor),
       };
       const total = sumHours(hours);
       weekTotal += total;
@@ -320,10 +413,12 @@ profiles.forEach((profile, pIdx) => {
       });
     });
     if (plan.approval) {
+      // Reparte revisores entre los dos managers/admin para variar la columna "aprobado por".
+      const approverId = pIdx % 2 === 0 ? 'user_1' : 'user_9';
       approvals.push({
         id: `apr_${profile.userId}_${plan.offset}`,
         userId: profile.userId,
-        approverId: plan.approval === 'pending' ? undefined : 'user_1',
+        approverId: plan.approval === 'pending' ? undefined : approverId,
         weekNumber,
         year,
         totalHours: weekTotal,
@@ -342,15 +437,16 @@ profiles.forEach((profile, pIdx) => {
 // over-allocation (>40h capacity) so the PM workload view has something to show.
 // ---------------------------------------------------------------------------
 const allocPlan: { resourceId: string; projectId: string; hours: number }[][] = [
-  // week 0 (current)
+  // week 0 (current) — cubre los tres casos de carga: sobreasignado, exacto y subasignado.
   [
     { resourceId: 'res_1', projectId: 'proj_1', hours: 32 },
-    { resourceId: 'res_1', projectId: 'proj_2', hours: 14 }, // 46h -> over-allocated
-    { resourceId: 'res_2', projectId: 'proj_2', hours: 36 },
-    { resourceId: 'res_3', projectId: 'proj_1', hours: 24 },
-    { resourceId: 'res_3', projectId: 'proj_3', hours: 12 },
-    { resourceId: 'res_4', projectId: 'proj_1', hours: 20 },
-    { resourceId: 'res_5', projectId: 'proj_3', hours: 28 },
+    { resourceId: 'res_1', projectId: 'proj_2', hours: 14 }, // res_1 = 46h -> SOBREASIGNADO (>40)
+    { resourceId: 'res_2', projectId: 'proj_2', hours: 24 },
+    { resourceId: 'res_2', projectId: 'proj_4', hours: 16 }, // res_2 = 40h -> EXACTO (=40)
+    { resourceId: 'res_3', projectId: 'proj_1', hours: 24 }, // res_3 = 24h -> SUBASIGNADO (<40)
+    { resourceId: 'res_4', projectId: 'proj_1', hours: 12 }, // res_4 = 12h -> SUBASIGNADO (<40)
+    { resourceId: 'res_5', projectId: 'proj_3', hours: 40 }, // res_5 = 40h -> EXACTO (=40)
+    { resourceId: 'res_6', projectId: 'proj_5', hours: 8 },  // res_6 = 8h -> SUBASIGNADO (recurso de usuario inactivo)
   ],
   // week +1
   [
@@ -397,6 +493,10 @@ const taskTimeEntries: Parameters<typeof createTaskTimeEntry>[0][] = [];
     { taskId: 'proj_1_e2_t4', userId: 'user_4', projectId: 'proj_1', hours: 6, day: -1, description: 'Validación Zod' },
     { taskId: 'proj_5_e1_t2', userId: 'user_4', projectId: 'proj_5', hours: 8, day: -4, description: 'Migración de BD' },
     { taskId: 'proj_5_e1_t3', userId: 'user_5', projectId: 'proj_5', hours: 5, day: -1, description: 'Validación de cutover' },
+    // Proyecto sobre presupuesto: muchas horas reales para que el costo supere el budget.
+    { taskId: 'proj_10_e1_t2', userId: 'user_4', projectId: 'proj_10', hours: 8, day: -4, description: 'Diagnóstico fuga de memoria' },
+    { taskId: 'proj_10_e1_t3', userId: 'user_5', projectId: 'proj_10', hours: 7, day: -2, description: 'Corrección de facturación' },
+    { taskId: 'proj_10_e1_t1', userId: 'user_4', projectId: 'proj_10', hours: 6, day: -1, description: 'Hotfix de login' },
   ];
   ttePlan.forEach((e, i) => {
     taskTimeEntries.push({
@@ -424,6 +524,15 @@ const notifications: Parameters<typeof createNotification>[0][] = [
   { id: 'notif_4', userId: 'user_2', type: 'phase_rejected', title: 'Cambios solicitados', message: 'Tu timesheet de hace 3 semanas necesita correcciones.', read: false },
   { id: 'notif_5', userId: 'user_2', type: 'project_assigned', title: 'Nuevo proyecto asignado', message: 'Fuiste asignado a App Móvil (MOB-002).', projectId: 'proj_2', read: true },
   { id: 'notif_6', userId: 'user_3', type: 'hours_reminder', title: 'Registra tus horas', message: 'No has registrado horas para la semana actual.', read: false },
+  // Más variedad: todos los tipos, mezcla leído/no leído, para varios usuarios.
+  { id: 'notif_7', userId: 'user_9', type: 'hours_reminder', title: 'Timesheets por revisar', message: 'Tienes timesheets pendientes de aprobación asignados a ti.', read: false },
+  { id: 'notif_8', userId: 'user_4', type: 'project_assigned', title: 'Nuevo proyecto asignado', message: 'Fuiste asignado a Soporte Crítico Acme (SUP-010).', projectId: 'proj_10', read: false },
+  { id: 'notif_9', userId: 'user_4', type: 'deadline_warning', title: 'Tarea vencida', message: 'La tarea "Postmortem de incidentes" está vencida.', projectId: 'proj_10', read: true },
+  { id: 'notif_10', userId: 'user_5', type: 'phase_rejected', title: 'Fase rechazada', message: 'La fase de Pruebas del cliente fue rechazada y requiere correcciones.', projectId: 'proj_2', read: false },
+  { id: 'notif_11', userId: 'user_5', type: 'phase_approved', title: 'Fase aprobada', message: 'Se aprobó la fase de Aprobación de prototipo en App Móvil.', projectId: 'proj_2', read: true },
+  { id: 'notif_12', userId: 'user_10', type: 'project_assigned', title: 'Bienvenido al equipo', message: 'Fuiste asignado a Mejoras Internas DevEx (INT-009).', projectId: 'proj_9', read: false },
+  { id: 'notif_13', userId: 'user_2', type: 'deadline_warning', title: 'Fecha límite cercana', message: 'El hito "Lanzamiento beta" del Portal Clientes vence pronto.', projectId: 'proj_1', read: true },
+  { id: 'notif_14', userId: 'user_7', type: 'hours_reminder', title: 'Registra tus horas', message: 'Recuerda completar tu timesheet de la semana.', read: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -440,6 +549,14 @@ const objectives: Parameters<typeof createObjective>[0][] = [
   { id: 'obj_team_product', title: 'Lanzar la suite de estrategia (OKRs + reportes) que nos diferencie', parentId: 'obj_company', description: 'Iniciativa de diferenciación de producto.', level: 'team', ownerId: 'user_6', period: okrPeriod.q, periodType: 'quarterly', type: 'aspirational', strategicTheme: 'growth', status: 'on_track' },
   { id: 'obj_team_delivery', title: 'Mejorar la salud de entrega de proyectos', parentId: 'obj_company', description: 'Reducir desviaciones de presupuesto y plazos.', level: 'team', ownerId: 'user_6', period: okrPeriod.q, periodType: 'quarterly', type: 'committed', strategicTheme: 'efficiency', status: 'at_risk' },
   { id: 'obj_ind_carlos', title: 'Elevar la calidad del frontend del Portal Clientes', parentId: 'obj_team_product', description: 'Objetivo individual de Carlos.', level: 'individual', ownerId: 'user_2', period: okrPeriod.q, periodType: 'quarterly', type: 'committed', strategicTheme: 'customer', status: 'on_track' },
+  // Objetivo de equipo en MERCADO ROJO (competir de frente con Jira/Smartsheet).
+  { id: 'obj_team_sales', title: 'Ganar deals frente a la competencia directa', parentId: 'obj_company', description: 'Competir cabeza a cabeza en el océano rojo del mercado actual.', level: 'team', ownerId: 'user_9', period: okrPeriod.q, periodType: 'quarterly', type: 'committed', strategicTheme: 'red_ocean', status: 'behind' },
+  // Objetivo de equipo SIN tema estratégico (none) y aún en borrador (draft, ~0%).
+  { id: 'obj_team_ops', title: 'Ordenar la operación interna del equipo', parentId: 'obj_company', description: 'Mejoras operativas sin un tema estratégico asignado todavía.', level: 'team', ownerId: 'user_6', period: okrPeriod.q, periodType: 'quarterly', type: 'committed', strategicTheme: 'none', status: 'draft' },
+  // Objetivo individual COMPLETADO (~100%, status done) — alineado al equipo de delivery.
+  { id: 'obj_ind_pedro', title: 'Estabilizar el backend del Portal Clientes', parentId: 'obj_team_delivery', description: 'Objetivo individual de Pedro, ya cumplido.', level: 'individual', ownerId: 'user_4', period: okrPeriod.q, periodType: 'quarterly', type: 'committed', strategicTheme: 'efficiency', status: 'done' },
+  // Objetivo individual ASPIRACIONAL de diseño, alineado al equipo de producto.
+  { id: 'obj_ind_maria', title: 'Crear un sistema de diseño reutilizable', parentId: 'obj_team_product', description: 'Objetivo individual de María (diseño).', level: 'individual', ownerId: 'user_3', period: okrPeriod.q, periodType: 'quarterly', type: 'aspirational', strategicTheme: 'growth', status: 'at_risk' },
 ];
 
 const keyResults: Parameters<typeof createKeyResult>[0][] = [
@@ -456,6 +573,17 @@ const keyResults: Parameters<typeof createKeyResult>[0][] = [
   // Individual
   { id: 'kr_ic1', objectiveId: 'obj_ind_carlos', title: 'Cobertura de tests del frontend de 20% a 80%', type: 'metric', unit: '%', startValue: 20, targetValue: 80, currentValue: 55, weight: 1, confidence: 'on_track', ownerId: 'user_2', projectId: 'proj_1' },
   { id: 'kr_ic2', objectiveId: 'obj_ind_carlos', title: 'Lighthouse de performance > 90', type: 'metric', unit: '', startValue: 62, targetValue: 90, currentValue: 78, weight: 1, confidence: 'on_track', ownerId: 'user_2', projectId: 'proj_1' },
+  // Team sales (mercado rojo) — uno off_track, otro EXCEDIDO (current > target).
+  { id: 'kr_ts1', objectiveId: 'obj_team_sales', title: 'Cerrar 5 deals ganados a la competencia', type: 'metric', unit: ' deals', startValue: 0, targetValue: 5, currentValue: 1, weight: 1, confidence: 'off_track', ownerId: 'user_9' },
+  { id: 'kr_ts2', objectiveId: 'obj_team_sales', title: 'Demos realizadas (meta 10)', type: 'metric', unit: ' demos', startValue: 0, targetValue: 10, currentValue: 13, weight: 1, confidence: 'on_track', ownerId: 'user_9' }, // EXCEDIDO: current > target
+  // Team ops (sin tema, draft, ~0%) — KRs en su valor inicial.
+  { id: 'kr_to1', objectiveId: 'obj_team_ops', title: 'Documentar 8 procesos internos', type: 'metric', unit: ' procesos', startValue: 0, targetValue: 8, currentValue: 0, weight: 1, confidence: 'at_risk', ownerId: 'user_6' },
+  { id: 'kr_to2', objectiveId: 'obj_team_ops', title: 'Definir el ritual de retro quincenal', type: 'binary', startValue: 0, targetValue: 1, currentValue: 0, weight: 1, confidence: 'off_track', ownerId: 'user_6' },
+  // Individual Pedro (done, ~100%) — KRs cumplidos.
+  { id: 'kr_ip1', objectiveId: 'obj_ind_pedro', title: 'Reducir errores 5xx de 40 a 5 por día', type: 'metric', unit: '/día', startValue: 40, targetValue: 5, currentValue: 4, weight: 1, confidence: 'on_track', ownerId: 'user_4', projectId: 'proj_1' }, // meta DECRECIENTE cumplida
+  { id: 'kr_ip2', objectiveId: 'obj_ind_pedro', title: 'Migrar todos los endpoints a validación Zod', type: 'binary', startValue: 0, targetValue: 1, currentValue: 1, weight: 1, confidence: 'on_track', ownerId: 'user_4', projectId: 'proj_1' },
+  // Individual María (aspiracional) — métrico y sin proyecto vinculado.
+  { id: 'kr_im1', objectiveId: 'obj_ind_maria', title: 'Componentes en el sistema de diseño: de 0 a 30', type: 'metric', unit: ' componentes', startValue: 0, targetValue: 30, currentValue: 11, weight: 1, confidence: 'at_risk', ownerId: 'user_3' },
 ];
 
 const initiatives: Parameters<typeof createInitiative>[0][] = [
@@ -463,6 +591,12 @@ const initiatives: Parameters<typeof createInitiative>[0][] = [
   { id: 'init_2', objectiveId: 'obj_team_product', keyResultId: 'kr_tp2', title: 'Onboarding guiado de OKRs para PMs', status: 'todo', ownerId: 'user_6' },
   { id: 'init_3', objectiveId: 'obj_team_delivery', keyResultId: 'kr_td2', title: 'Plan de cutover de Migración Cloud', status: 'in_progress', projectId: 'proj_5', ownerId: 'user_4' },
   { id: 'init_4', objectiveId: 'obj_ind_carlos', keyResultId: 'kr_ic1', title: 'Añadir suite de tests con Vitest', status: 'in_progress', projectId: 'proj_1', ownerId: 'user_2' },
+  // Iniciativa COMPLETADA (status done), vinculada a un proyecto y a una tarea concreta.
+  { id: 'init_5', objectiveId: 'obj_ind_pedro', keyResultId: 'kr_ip2', title: 'Refactor de endpoints con Zod', status: 'done', projectId: 'proj_1', taskId: 'proj_1_e2_t4', ownerId: 'user_4' },
+  // Iniciativa de ventas (mercado rojo), por hacer.
+  { id: 'init_6', objectiveId: 'obj_team_sales', keyResultId: 'kr_ts1', title: 'Crear batería de demos comerciales', status: 'todo', ownerId: 'user_9' },
+  // Iniciativa de diseño en progreso, sin KR específico.
+  { id: 'init_7', objectiveId: 'obj_ind_maria', title: 'Auditoría de componentes existentes', status: 'in_progress', projectId: 'proj_2', ownerId: 'user_3' },
 ];
 
 // ---------------------------------------------------------------------------
