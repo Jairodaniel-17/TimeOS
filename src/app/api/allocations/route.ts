@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAllocations, getResources, getUsers, getProjects, createResource, createAllocation } from '@/lib/luma-docs';
 import { luma } from '@/lib/luma';
+import { currentOrgId } from '@/lib/org-context';
 
 export async function GET(request: Request) {
   try {
@@ -92,7 +93,8 @@ export async function PUT(request: Request) {
     }
     
     const result = await luma.getDoc<Record<string, unknown>>('allocations', id);
-    if (!result) {
+    const orgId = await currentOrgId();
+    if (!result || (orgId && result.doc.orgId !== orgId)) {
       return NextResponse.json(
         { error: 'Allocation not found', success: false },
         { status: 404 }
@@ -122,7 +124,17 @@ export async function DELETE(request: Request) {
         { status: 400 }
       );
     }
-    
+
+    // Ownership: solo se borra una asignación de la org del request.
+    const existing = await luma.getDoc<{ orgId?: string }>('allocations', id);
+    const orgId = await currentOrgId();
+    if (!existing || (orgId && existing.doc.orgId !== orgId)) {
+      return NextResponse.json(
+        { error: 'Allocation not found', success: false },
+        { status: 404 }
+      );
+    }
+
     await luma.deleteDoc('allocations', id);
     
     return NextResponse.json({ success: true });

@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { luma } from '@/lib/luma';
+import { currentOrgId } from '@/lib/org-context';
+
+// Centinela que no matchea ninguna org real → listas fail-closed sin sesión.
+const NO_ORG = ' __no_org__';
 
 interface DocumentDoc {
   id: string;
@@ -9,6 +13,7 @@ interface DocumentDoc {
   content: string; // base64
   folder: string;
   uploadedBy: string;
+  orgId?: string;
   uploadedAt: number;
 }
 
@@ -23,7 +28,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const folder = searchParams.get('folder');
 
-    const docs = await luma.findDocs<DocumentDoc>('documents', undefined, 500);
+    const orgId = (await currentOrgId()) ?? NO_ORG;
+    const docs = await luma.findDocs<DocumentDoc>('documents', { orgId }, 500);
     let documents = docs.map(d => d.doc);
 
     if (folder && folder !== 'all') {
@@ -64,6 +70,7 @@ export async function POST(request: Request) {
       content: base64Content,
       folder: folder || 'all',
       uploadedBy: uploadedBy || 'Unknown',
+      orgId: (await currentOrgId()) ?? undefined,
       uploadedAt: Date.now(),
     };
 
@@ -86,7 +93,10 @@ export async function GET_ONE(request: Request) {
     if (!id) return NextResponse.json({ error: 'id is required', success: false }, { status: 400 });
 
     const result = await luma.getDoc<DocumentDoc>('documents', id);
-    if (!result) return NextResponse.json({ error: 'Document not found', success: false }, { status: 404 });
+    const orgId = await currentOrgId();
+    if (!result || (orgId && result.doc.orgId !== orgId)) {
+      return NextResponse.json({ error: 'Document not found', success: false }, { status: 404 });
+    }
 
     return NextResponse.json({ data: result.doc, success: true });
   } catch (error) {
@@ -100,6 +110,13 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id is required', success: false }, { status: 400 });
+
+    // Ownership: solo se borra un documento de la org del request.
+    const existing = await luma.getDoc<DocumentDoc>('documents', id);
+    const orgId = await currentOrgId();
+    if (!existing || (orgId && existing.doc.orgId !== orgId)) {
+      return NextResponse.json({ error: 'Document not found', success: false }, { status: 404 });
+    }
 
     await luma.deleteDoc('documents', id);
     return NextResponse.json({ success: true });

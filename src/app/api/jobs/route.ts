@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { luma } from '@/lib/luma';
+import { currentOrgId } from '@/lib/org-context';
+
+// Centinela que no matchea ninguna org real → listas fail-closed sin sesión.
+const NO_ORG = ' __no_org__';
 
 interface JobDoc {
   id: string;
@@ -11,6 +15,7 @@ interface JobDoc {
   completedAt?: number;
   durationMs?: number;
   error?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -20,7 +25,8 @@ export async function GET(request: Request) {
     const status = searchParams.get('status');
     const limit = parseInt(searchParams.get('limit') || '100');
 
-    const docs = await luma.findDocs<JobDoc>('jobs', undefined, 500);
+    const orgId = (await currentOrgId()) ?? NO_ORG;
+    const docs = await luma.findDocs<JobDoc>('jobs', { orgId }, 500);
     let jobs = docs.map(d => d.doc).sort((a, b) => b.startedAt - a.startedAt);
 
     if (status) jobs = jobs.filter(j => j.status === status);
@@ -51,6 +57,7 @@ export async function POST(request: Request) {
       initiatedBy: initiatedBy || 'System',
       progress: 0,
       startedAt: Date.now(),
+      orgId: (await currentOrgId()) ?? undefined,
       metadata,
     };
 
@@ -70,7 +77,10 @@ export async function PUT(request: Request) {
     if (!id) return NextResponse.json({ error: 'id is required', success: false }, { status: 400 });
 
     const result = await luma.getDoc<JobDoc>('jobs', id);
-    if (!result) return NextResponse.json({ error: 'Job not found', success: false }, { status: 404 });
+    const orgId = await currentOrgId();
+    if (!result || (orgId && result.doc.orgId !== orgId)) {
+      return NextResponse.json({ error: 'Job not found', success: false }, { status: 404 });
+    }
 
     const updates: Partial<JobDoc> = {};
     if (status) updates.status = status;

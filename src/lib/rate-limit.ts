@@ -12,6 +12,12 @@ export interface RateLimitResult {
 }
 
 export function rateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+  // Escape hatch para entornos de prueba/carga (e2e hace muchos logins desde la
+  // misma IP). APAGADO por defecto: producción mantiene el rate-limit intacto.
+  if (process.env.RATE_LIMIT_DISABLED === 'true') {
+    return { ok: true, retryAfter: 0, remaining: limit };
+  }
+
   const now = Date.now();
 
   // Opportunistic cleanup so the map can't grow unbounded.

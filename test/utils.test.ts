@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getWeekNumber, getCurrentYear, getWeekDates, formatWeekDisplay } from '../utils';
+import { getWeekNumber, getCurrentYear, getWeekDates, formatWeekDisplay } from '../src/lib/utils';
 
 describe('getWeekNumber (ISO 8601)', () => {
   it('semanas consecutivas difieren en 1', () => {

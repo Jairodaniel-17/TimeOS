@@ -47,7 +47,12 @@ Credenciales de prueba: `ana.garcia@timeos.com` / `admin123` (admin), `carlos.lo
 
 ### Multi-tenancy
 
-Fundación: colección `organizations` + `orgId` en users (en el JWT y AuthContext); el signup crea una org; `/settings/organization` la gestiona. PENDIENTE: scopear TODAS las colecciones por `orgId` en cada query (retrofit no hecho).
+Colección `organizations` + `orgId` en cada entidad. El `orgId` viaja en el JWT; el middleware lo verifica y lo reenvía como header `x-org-id` (sobrescribiendo cualquier valor entrante falsificado). El data layer lo lee vía `src/lib/org-context.ts` (`currentOrgId()`/`currentUserId()`, basados en `next/headers`) y **scopea TODA lectura/escritura por organización** en `luma-docs.ts`:
+- Lecturas de colección → `tenantFilter(...)` inyecta `orgId` server-side (sin org en contexto → centinela `NO_ORG` ⇒ fail-closed, `[]`).
+- Lecturas por id → `scopedDoc(...)` devuelve `null` si el doc es de otra org (IDOR cerrado).
+- Escrituras → `ownerOrg(...)` estampa el `orgId` del request (o el explícito en seed/signup).
+
+Las rutas con acceso directo a Luma (colecciones `jobs`, `documents`, `spreadsheets`, `allocations`) scopean inline. `spreadsheets` deriva el `userId` de la sesión (no del query) para cerrar el IDOR. Globales a propósito: `organizations` por slug/id (lookup pre-auth en signup), `password_resets` (token pre-auth) y `roles` (config de permisos a nivel app). `clearAllData`/`initializeDocumentStore` (admin reset) iteran todas las colecciones a propósito. **Tras desplegar este cambio hay que re-sembrar (`/api/reset`) para que la data existente quede estampada con `orgId`.** Test de aislamiento: `src/lib/__tests__/org-scope.test.ts`.
 
 ### Permissions
 

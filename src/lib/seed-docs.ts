@@ -641,7 +641,7 @@ export async function seedDocumentStore() {
 
   // Clients
   for (const client of clients) {
-    try { await createClient(client); } catch { /* may exist */ }
+    try { await createClient({ ...client, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // Projects (+ their 10 phases)
@@ -657,9 +657,9 @@ export async function seedDocumentStore() {
           hourlyRate: project.hourlyRate, currency: project.currency, progress: project.progress,
         });
       } else {
-        await createProject(project);
+        await createProject({ ...project, orgId: DEFAULT_ORG });
       }
-      await createProjectPhases(project.id);
+      await createProjectPhases(project.id, DEFAULT_ORG);
     } catch (error) {
       console.error('Error with project:', project.id, error);
     }
@@ -673,7 +673,7 @@ export async function seedDocumentStore() {
       if (existingResourceIds.has(resource.id)) {
         await updateResource(resource.id, { hourlyRate: resource.hourlyRate, monthlySalary: resource.monthlySalary, currency: resource.currency, skills: resource.skills });
       } else {
-        await createResource(resource);
+        await createResource({ ...resource, orgId: DEFAULT_ORG });
       }
     } catch (error) {
       console.error('Error with resource:', resource.id, error);
@@ -682,27 +682,27 @@ export async function seedDocumentStore() {
 
   // Allocations
   for (const allocation of allocations) {
-    try { await createAllocation(allocation); } catch { /* may exist */ }
+    try { await createAllocation({ ...allocation, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // Sprints
   for (const sprint of sprints) {
-    try { await createSprint(sprint); } catch { /* may exist */ }
+    try { await createSprint({ ...sprint, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // Tasks
   for (const task of tasks) {
-    try { await createTask(task); } catch { /* may exist */ }
+    try { await createTask({ ...task, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // Task time entries
   for (const entry of taskTimeEntries) {
-    try { await createTaskTimeEntry(entry); } catch { /* may exist */ }
+    try { await createTaskTimeEntry({ ...entry, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // Weekly timesheets
   for (const entry of timeEntries) {
-    try { await createTimeEntry(entry); } catch { /* may exist */ }
+    try { await createTimeEntry({ ...entry, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // Approvals
@@ -710,24 +710,24 @@ export async function seedDocumentStore() {
   const existingApprovalIds = new Set(existingApprovals.map(a => a.id));
   for (const approval of approvals) {
     try {
-      if (!existingApprovalIds.has(approval.id)) await createApproval(approval);
+      if (!existingApprovalIds.has(approval.id)) await createApproval({ ...approval, orgId: DEFAULT_ORG });
     } catch { /* may exist */ }
   }
 
   // Notifications
   for (const notification of notifications) {
-    try { await createNotification(notification); } catch { /* may exist */ }
+    try { await createNotification({ ...notification, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   // OKRs
   for (const objective of objectives) {
-    try { await createObjective(objective); } catch { /* may exist */ }
+    try { await createObjective({ ...objective, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
   for (const kr of keyResults) {
-    try { await createKeyResult(kr); } catch { /* may exist */ }
+    try { await createKeyResult({ ...kr, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
   for (const initiative of initiatives) {
-    try { await createInitiative(initiative); } catch { /* may exist */ }
+    try { await createInitiative({ ...initiative, orgId: DEFAULT_ORG }); } catch { /* may exist */ }
   }
 
   console.log(`Document Store seeded: ${users.length} users, ${clients.length} clients, ${projects.length} projects, ${tasks.length} tasks, ${timeEntries.length} timesheets, ${approvals.length} approvals, ${allocations.length} allocations, ${notifications.length} notifications`);

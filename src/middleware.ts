@@ -57,10 +57,21 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  // Forward user identity in request headers for API handlers
+  // Forward user identity in request headers for API handlers.
+  // Importante: usamos `set` (no `append`) para SOBRESCRIBIR cualquier header
+  // que el cliente haya intentado falsificar (x-user-id / x-org-id). La fuente
+  // de verdad es el JWT verificado, no la request entrante.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-user-id', payload.id);
   requestHeaders.set('x-user-role', payload.role);
+  // x-org-id: scope multi-tenant que consume el data layer (org-context.ts).
+  if (payload.orgId) {
+    requestHeaders.set('x-org-id', payload.orgId);
+  } else {
+    // Sesión sin organización: garantizamos que NO se filtre un x-org-id
+    // entrante falsificado.
+    requestHeaders.delete('x-org-id');
+  }
 
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
